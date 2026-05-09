@@ -12,7 +12,10 @@ window.ConjStorage = (function () {
     try { return JSON.parse(localStorage.getItem(KEY)) || {}; }
     catch (e) { return {}; }
   }
-  function save(data) { localStorage.setItem(KEY, JSON.stringify(data)); }
+  function save(data) {
+    localStorage.setItem(KEY, JSON.stringify(data));
+    if (window.CloudSync) window.CloudSync.notifyChange();
+  }
 
   function record(level, kind, key, form, isCorrect) {
     const data = load();

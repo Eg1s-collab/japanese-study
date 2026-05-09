@@ -74,4 +74,7 @@
   }
 
   render();
+
+  // Re-render after a cloud pull/merge so views reflect the merged state
+  document.addEventListener("cloud-pulled", render);
 })();

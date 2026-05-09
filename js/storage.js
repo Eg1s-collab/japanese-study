@@ -15,6 +15,7 @@ window.Storage = (function () {
   }
   function save(list) {
     localStorage.setItem(KEY, JSON.stringify(list));
+    if (window.CloudSync) window.CloudSync.notifyChange();
   }
 
   function makeId(level, unitId, qIndex) {
