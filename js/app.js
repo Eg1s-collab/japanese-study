@@ -65,7 +65,8 @@
         render();
       });
     } else if (state.tab === "conjugation") {
-      node = window.ConjugationView.render(state.level);
+      // Conjugation is not level-segmented (shared pool across all levels).
+      node = window.ConjugationView.render();
     } else if (state.tab === "bookmarks") {
       node = window.BookmarksView.render();
     }

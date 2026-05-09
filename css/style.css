@@ -248,8 +248,81 @@ h3 { margin: 0 0 6px; font-size: 16px; }
 }
 .score-num { font-size: 28px; font-weight: 800; color: var(--accent); }
 
+/* iOS-style 12-key kana keypad */
+.kana-keyboard {
+  margin: 12px 0 6px;
+  padding: 8px;
+  background: #e9edf2;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.kana-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.kana-key {
+  height: 50px;
+  padding: 0;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 22px;
+  font-family: inherit;
+  color: var(--ink);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+  transition: background .12s ease, transform .08s ease;
+  box-shadow: 0 1px 0 rgba(0,0,0,.04);
+}
+.kana-key:hover { background: #fafafa; }
+.kana-key:active { background: var(--accent-soft); border-color: var(--accent); transform: scale(.97); }
+.kana-key.kana-spacer { visibility: hidden; pointer-events: none; box-shadow: none; }
+.kana-key.kana-cmd { font-size: 14px; font-weight: 500; }
+.kana-key.kana-bksp { background: #fef9c3; border-color: #fde68a; font-size: 20px; }
+.kana-key.kana-clear { background: #fee2e2; border-color: #fecaca; font-size: 13px; }
+
+.kana-popup {
+  display: none;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px;
+  margin-bottom: 8px;
+  background: #fff;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(200, 16, 46, .15);
+}
+.kana-pop {
+  flex: 0 0 auto;
+  min-width: 42px;
+  height: 40px;
+  padding: 0 10px;
+  background: var(--accent-soft);
+  border: 1px solid #fde2e6;
+  border-radius: 8px;
+  font-size: 20px;
+  font-family: inherit;
+  color: var(--ink);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background .1s ease;
+}
+.kana-pop:hover { background: #fbd0d6; }
+.kana-pop:active { background: var(--accent); color: #fff; }
+
 @media (max-width: 600px) {
   .topbar { padding: 12px 14px; }
   main { padding: 14px; }
   .brand h1 { font-size: 16px; }
+  .kana-keyboard { padding: 6px; }
+  .kana-grid { gap: 4px; }
+  .kana-key { height: 44px; font-size: 20px; border-radius: 8px; }
+  .kana-key.kana-cmd { font-size: 13px; }
+  .kana-key.kana-bksp { font-size: 18px; }
+  .kana-pop { min-width: 38px; height: 38px; font-size: 18px; padding: 0 8px; }
+  .kana-popup { padding: 6px; gap: 4px; }
 }

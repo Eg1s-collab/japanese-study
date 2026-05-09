@@ -130,7 +130,11 @@ async function pullAndMerge() {
     const localCj = JSON.parse(localStorage.getItem(CJ_KEY) || "{}");
 
     const mergedBm = mergeBookmarks(cloud ? cloud.bookmarks : [], localBm);
-    const mergedCj = mergeConj(cloud ? cloud.conjugation : {}, localCj);
+    let mergedCj = mergeConj(cloud ? cloud.conjugation : {}, localCj);
+    // Fold legacy per-level keys (e.g. cloud copies still under "n5") into "all".
+    if (window.ConjStorage && window.ConjStorage.migrate) {
+      mergedCj = window.ConjStorage.migrate(mergedCj).data;
+    }
 
     localStorage.setItem(BM_KEY, JSON.stringify(mergedBm));
     localStorage.setItem(CJ_KEY, JSON.stringify(mergedCj));

@@ -1,17 +1,60 @@
 /**
- * Conjugation drill — pick a target form, generate items from
- * window.LEVELS[level].verbs / .adjectives, and auto-save per-item-per-form
- * progress to window.ConjStorage so the user can resume any time.
+ * Conjugation drill — pick a target form, generate items from a global pool
+ * aggregated across all window.LEVELS (conjugation is NOT level-segmented;
+ * the level dropdown controls grammar/quiz only). Auto-saves per-item-per-form
+ * progress to window.ConjStorage under a fixed "all" key.
  *
  * UI:
  *   • progress bar (overall completion of mode)
- *   • per-current-item "form pills" showing which forms the user has
- *     answered correctly (green) or only tried (yellow)
- *   • collapsible "ความก้าวหน้า" panel with per-item table + reset button
+ *   • per-current-item "form pills" (✓ correct / · tried)
+ *   • collapsible "ความก้าวหน้า" panel with per-item table + reset
+ *   • on-screen hiragana keyboard so users without a JP IME can answer
  */
 window.ConjugationView = (function () {
-  function render(level) {
-    const lv = window.LEVELS[level];
+  const STORAGE_LEVEL = "all";
+
+  // Compact iOS-style 12-key kana keypad. Tap a base row (e.g. "か") to
+  // pop up all variants for that row (incl. dakuten / handakuten / small).
+  const KANA_ROWS = {
+    "あ": ["あ","い","う","え","お"],
+    "か": ["か","き","く","け","こ","が","ぎ","ぐ","げ","ご"],
+    "さ": ["さ","し","す","せ","そ","ざ","じ","ず","ぜ","ぞ"],
+    "た": ["た","ち","つ","て","と","だ","ぢ","づ","で","ど","っ"],
+    "な": ["な","に","ぬ","ね","の"],
+    "は": ["は","ひ","ふ","へ","ほ","ば","び","ぶ","べ","ぼ","ぱ","ぴ","ぷ","ぺ","ぽ"],
+    "ま": ["ま","み","む","め","も"],
+    "や": ["や","ゆ","よ","ゃ","ゅ","ょ"],
+    "ら": ["ら","り","る","れ","ろ"],
+    "わ": ["わ","を","ん","ー"]
+  };
+  // 4×4 grid layout. Each cell is either a row-base char, a control id, or null spacer.
+  const KEYBOARD_LAYOUT = [
+    ["あ", "か", "さ", { ctl: "bksp",  label: "⌫"   }],
+    ["た", "な", "は", null],
+    ["ま", "や", "ら", null],
+    [null, "わ", null, { ctl: "clear", label: "ล้าง" }]
+  ];
+
+  // Aggregate verbs / adjectives / formLabels across all configured levels.
+  // First-occurrence wins on duplicates (keyed by dict / word).
+  function aggregate() {
+    const verbs = [], adjectives = [], formLabels = {};
+    const seenV = new Set(), seenA = new Set();
+    Object.keys(window.LEVELS || {}).forEach((id) => {
+      const lv = window.LEVELS[id] || {};
+      (lv.verbs || []).forEach((v) => {
+        if (v && v.dict && !seenV.has(v.dict)) { seenV.add(v.dict); verbs.push(v); }
+      });
+      (lv.adjectives || []).forEach((a) => {
+        if (a && a.word && !seenA.has(a.word)) { seenA.add(a.word); adjectives.push(a); }
+      });
+      Object.assign(formLabels, lv.formLabels || {});
+    });
+    return { verbs, adjectives, formLabels };
+  }
+
+  function render() {
+    const data = aggregate();
     const root = document.createElement("div");
 
     const verbForms = ["masu", "masen", "mashita", "te", "nai", "ta", "tai"];
@@ -24,9 +67,9 @@ window.ConjugationView = (function () {
     let panelOpen = false;
 
     function pool() {
-      if (mode === "verb") return lv.verbs || [];
-      if (mode === "i-adj") return (lv.adjectives || []).filter((a) => a.kind === "i");
-      return (lv.adjectives || []).filter((a) => a.kind === "na");
+      if (mode === "verb") return data.verbs;
+      if (mode === "i-adj") return data.adjectives.filter((a) => a.kind === "i");
+      return data.adjectives.filter((a) => a.kind === "na");
     }
     function targetOptions() {
       if (mode === "verb") return verbForms;
@@ -58,10 +101,10 @@ window.ConjugationView = (function () {
 
     function draw() {
       const opts = targetOptions()
-        .map((f) => `<option value="${f}" ${f === target ? "selected" : ""}>${escapeHtml(lv.formLabels[f] || f)}</option>`)
+        .map((f) => `<option value="${f}" ${f === target ? "selected" : ""}>${escapeHtml(data.formLabels[f] || f)}</option>`)
         .join("");
 
-      const totals = window.ConjStorage.totals(level, mode, pool(), targetOptions());
+      const totals = window.ConjStorage.totals(STORAGE_LEVEL, mode, pool(), targetOptions());
       const overallPct = totals.total ? Math.round((totals.done / totals.total) * 100) : 0;
 
       let prompt = "—", groupPill = "", pillsHtml = "", meaning = "";
@@ -78,19 +121,37 @@ window.ConjugationView = (function () {
         }
         meaning = item.meaning || "";
 
-        const sm = window.ConjStorage.summary(level, mode, keyOf(item), targetOptions());
+        const sm = window.ConjStorage.summary(STORAGE_LEVEL, mode, keyOf(item), targetOptions());
         pillsHtml = targetOptions().map((f) => {
           const slot = sm.item[f];
           let cls = "fpill";
           let mark = "";
           if (slot && slot.correct > 0) { cls += " done"; mark = " ✓"; }
           else if (slot && slot.tries > 0) { cls += " tried"; mark = " ·"; }
-          return `<span class="${cls}">${escapeHtml(lv.formLabels[f] || f)}${mark}</span>`;
+          return `<span class="${cls}">${escapeHtml(data.formLabels[f] || f)}${mark}</span>`;
         }).join("");
       }
 
+      const kbCells = KEYBOARD_LAYOUT.flat().map((cell) => {
+        if (cell === null) return `<span class="kana-key kana-spacer" aria-hidden="true"></span>`;
+        if (typeof cell === "string") {
+          return `<button type="button" class="kana-key" data-row="${cell}">${cell}</button>`;
+        }
+        if (cell.ctl === "bksp") {
+          return `<button type="button" class="kana-key kana-cmd kana-bksp" id="kanaBksp" aria-label="ลบ">${cell.label}</button>`;
+        }
+        if (cell.ctl === "clear") {
+          return `<button type="button" class="kana-key kana-cmd kana-clear" id="kanaClear">${cell.label}</button>`;
+        }
+        return "";
+      }).join("");
+      const kbHtml = `
+        <div class="kana-popup" id="kanaPopup" role="listbox" aria-label="เลือกตัวอักษร"></div>
+        <div class="kana-grid" id="kanaKb">${kbCells}</div>
+      `;
+
       root.innerHTML = `
-        <h2>ฝึกผันคำ ${escapeHtml(lv.label)}</h2>
+        <h2>ฝึกผันคำ</h2>
 
         <div class="card">
           <div class="conj-summary">
@@ -120,10 +181,13 @@ window.ConjugationView = (function () {
             ${groupPill}
             <span class="subtle">— ${escapeHtml(meaning)}</span>
           </div>
-          <p class="subtle" style="margin:6px 0 4px;">ผันเป็นรูป <b>${escapeHtml(lv.formLabels[target] || target)}</b></p>
+          <p class="subtle" style="margin:6px 0 4px;">ผันเป็นรูป <b>${escapeHtml(data.formLabels[target] || target)}</b></p>
           <div class="fpill-row" title="สถานะของคำนี้: ✓ = เคยตอบถูก / · = เคยตอบผิด">${pillsHtml}</div>
 
-          <input type="text" class="txt-input" id="ansInput" placeholder="พิมพ์คำตอบ..." autocomplete="off" />
+          <input type="text" class="txt-input" id="ansInput"
+            placeholder="พิมพ์คำตอบ หรือกดแป้นพิมพ์ด้านล่าง"
+            autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
+          <div class="kana-keyboard">${kbHtml}</div>
           <div class="btn-row">
             <button class="btn primary" id="checkBtn">ตรวจ</button>
             <button class="btn ghost" id="showBtn">เฉลย</button>
@@ -156,7 +220,6 @@ window.ConjugationView = (function () {
       root.querySelector("#skipBtn").addEventListener("click", next);
 
       const input = root.querySelector("#ansInput");
-      input.focus();
       const check = () => doCheck(input);
       root.querySelector("#checkBtn").addEventListener("click", check);
       input.addEventListener("keydown", (e) => { if (e.key === "Enter") check(); });
@@ -165,6 +228,46 @@ window.ConjugationView = (function () {
       root.querySelector("#togglePanel").addEventListener("click", () => {
         panelOpen = !panelOpen;
         draw();
+      });
+
+      // On-screen kana keypad: tap a base row → popup with variants. Tapping
+      // the same row toggles the popup closed. preventDefault on mousedown
+      // keeps the input focused so the cursor doesn't blink off between taps.
+      const kbWrap = root.querySelector(".kana-keyboard");
+      const popup = root.querySelector("#kanaPopup");
+      function hidePopup() {
+        popup.style.display = "none";
+        popup.innerHTML = "";
+        popup.removeAttribute("data-row");
+      }
+      function showPopup(rowKey) {
+        popup.innerHTML = (KANA_ROWS[rowKey] || []).map((c) =>
+          `<button type="button" class="kana-pop" data-c="${c}">${c}</button>`
+        ).join("");
+        popup.style.display = "flex";
+        popup.dataset.row = rowKey;
+      }
+      kbWrap.addEventListener("mousedown", (e) => {
+        if (e.target.closest("button")) e.preventDefault();
+      });
+      kbWrap.addEventListener("click", (e) => {
+        const btn = e.target.closest("button");
+        if (!btn) return;
+        if (btn.classList.contains("kana-pop")) {
+          const c = btn.dataset.c;
+          if (c) input.value += c;
+          hidePopup();
+        } else if (btn.id === "kanaBksp") {
+          input.value = input.value.slice(0, -1);
+          hidePopup();
+        } else if (btn.id === "kanaClear") {
+          input.value = "";
+          hidePopup();
+        } else if (btn.dataset.row) {
+          if (popup.dataset.row === btn.dataset.row) hidePopup();
+          else showPopup(btn.dataset.row);
+        }
+        input.focus();
       });
     }
 
@@ -178,7 +281,7 @@ window.ConjugationView = (function () {
       const got = (input.value || "").trim();
       const exp = expected();
       const ok = !!got && got === exp;
-      window.ConjStorage.record(level, mode, keyOf(item), target, ok);
+      window.ConjStorage.record(STORAGE_LEVEL, mode, keyOf(item), target, ok);
       draw(); // refresh pills + overall progress
       const inp2 = root.querySelector("#ansInput");
       if (inp2) inp2.value = got;
@@ -205,18 +308,20 @@ window.ConjugationView = (function () {
       if (!panel) return;
       const items = pool();
       const forms = targetOptions();
-      const data = window.ConjStorage.getAll(level, mode);
+      const dataAll = window.ConjStorage.getAll(STORAGE_LEVEL, mode);
 
       const rows = items.map((it) => {
         const k = mode === "verb" ? it.dict : it.word;
-        const slot = data[k] || {};
+        const slot = dataAll[k] || {};
         let done = 0, tried = 0;
         forms.forEach((f) => {
           if (slot[f] && slot[f].correct > 0) done++;
           else if (slot[f] && slot[f].tries > 0) tried++;
         });
         const pct = forms.length ? Math.round((done / forms.length) * 100) : 0;
-        const display = mode === "verb" ? `${escapeHtml(it.dict)} <span class="subtle">(${escapeHtml(it.meaning || "")})</span>` : `${escapeHtml(it.word)} <span class="subtle">(${escapeHtml(it.meaning || "")})</span>`;
+        const display = mode === "verb"
+          ? `${escapeHtml(it.dict)} <span class="subtle">(${escapeHtml(it.meaning || "")})</span>`
+          : `${escapeHtml(it.word)} <span class="subtle">(${escapeHtml(it.meaning || "")})</span>`;
         return `
           <tr class="${done === forms.length ? "row-perfect" : ""}">
             <td>${display}</td>
@@ -235,7 +340,7 @@ window.ConjugationView = (function () {
             <h3 style="margin:0;">ความก้าวหน้า — ${escapeHtml(modeLabel())}</h3>
             <button class="btn ghost" id="resetKindBtn">ล้างความก้าวหน้าหมวดนี้</button>
           </div>
-          <p class="subtle" style="margin:0 0 8px;">บันทึกอัตโนมัติเฉพาะเครื่องนี้ (localStorage). กลับมาทำต่อได้ตลอด.</p>
+          <p class="subtle" style="margin:0 0 8px;">บันทึกอัตโนมัติ — ซิงก์ข้ามเครื่องเมื่อเข้าสู่ระบบ.</p>
           <table class="conj-progress-table">
             <thead><tr><th>คำ</th><th>ผันถูกแล้ว</th></tr></thead>
             <tbody>${rows}</tbody>
@@ -244,7 +349,7 @@ window.ConjugationView = (function () {
       `;
       panel.querySelector("#resetKindBtn").addEventListener("click", () => {
         if (confirm(`ล้างความก้าวหน้าของ ${modeLabel()} ?`)) {
-          window.ConjStorage.resetKind(level, mode);
+          window.ConjStorage.resetKind(STORAGE_LEVEL, mode);
           draw();
         }
       });

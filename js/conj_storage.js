@@ -9,12 +9,48 @@ window.ConjStorage = (function () {
   const KEY = "jp_conjugation_progress_v1";
 
   function load() {
-    try { return JSON.parse(localStorage.getItem(KEY)) || {}; }
-    catch (e) { return {}; }
+    let raw = {};
+    try { raw = JSON.parse(localStorage.getItem(KEY)) || {}; }
+    catch (e) { raw = {}; }
+    const { data, changed } = migrate(raw);
+    if (changed) localStorage.setItem(KEY, JSON.stringify(data));
+    return data;
   }
   function save(data) {
     localStorage.setItem(KEY, JSON.stringify(data));
     if (window.CloudSync) window.CloudSync.notifyChange();
+  }
+
+  // Conjugation is no longer level-segmented — fold any legacy per-level
+  // keys (e.g. "n5") into the shared "all" pool. Pure: returns a fresh object.
+  function migrate(data) {
+    if (!data || typeof data !== "object") return { data: data || {}, changed: false };
+    const legacy = Object.keys(data).filter((k) => k !== "all");
+    if (!legacy.length) return { data, changed: false };
+    const all = data.all ? JSON.parse(JSON.stringify(data.all)) : {};
+    legacy.forEach((lv) => {
+      const src = data[lv] || {};
+      Object.keys(src).forEach((kind) => {
+        all[kind] = all[kind] || {};
+        Object.keys(src[kind] || {}).forEach((key) => {
+          const dst = all[kind][key] = all[kind][key] || {};
+          const sk = src[kind][key];
+          Object.keys(sk).forEach((form) => {
+            const a = dst[form], b = sk[form];
+            if (!a) dst[form] = b;
+            else if ((b.lastTs || 0) > (a.lastTs || 0)) dst[form] = b;
+            else if ((b.lastTs || 0) === (a.lastTs || 0)) {
+              dst[form] = {
+                tries: Math.max(a.tries || 0, b.tries || 0),
+                correct: Math.max(a.correct || 0, b.correct || 0),
+                lastTs: a.lastTs || b.lastTs || 0
+              };
+            }
+          });
+        });
+      });
+    });
+    return { data: { all }, changed: true };
   }
 
   function record(level, kind, key, form, isCorrect) {
@@ -81,5 +117,5 @@ window.ConjStorage = (function () {
     if (data[level]) { delete data[level][kind]; save(data); }
   }
 
-  return { load, record, getItem, getAll, summary, totals, resetLevel, resetKind };
+  return { load, record, getItem, getAll, summary, totals, resetLevel, resetKind, migrate };
 })();
