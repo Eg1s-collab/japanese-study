@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>みんなの日本語ドリル — ฝึกไวยากรณ์ JLPT (มินนะ)</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">み</span>
+      <div>
+        <h1>みんなの日本語ドリル</h1>
+        <p class="tag">ฝึกไวยากรณ์ + ผันคำ JLPT  (อิงตำรามินนะ)</p>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <label for="levelSelect" class="lvl-label">ระดับ</label>
+      <select id="levelSelect" class="level-select"></select>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="units">📖 บทเรียน</button>
+    <button class="tab" data-tab="quiz">📝 แบบฝึกหัด</button>
+    <button class="tab" data-tab="conjugation">🔁 ผันคำ</button>
+    <button class="tab" data-tab="bookmarks">⭐ ทวนซ้ำ</button>
+  </nav>
+
+  <main id="view"></main>
+
+  <footer class="foot">
+    <span>โครงสร้างพร้อมขยายระดับ N4 / N3 — เพิ่มไฟล์ <code>js/data/&lt;level&gt;/</code> แล้ว register ใน <code>js/data/index.js</code></span>
+  </footer>
+
+  <script src="js/data/n5/units.js"></script>
+  <script src="js/data/n5/conjugation.js"></script>
+  <script src="js/data/index.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/conj_storage.js"></script>
+  <script src="js/views/units.js"></script>
+  <script src="js/views/quiz.js"></script>
+  <script src="js/views/conjugation.js"></script>
+  <script src="js/views/bookmarks.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

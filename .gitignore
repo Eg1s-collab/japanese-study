@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+
+# Claude Code session files
+.claude/
+
+# Reference scans (113MB; copyright)
+มินนะ N5/
+*.HEIC
+
+# Editor
+.vscode/
+.idea/
+
+# Node (future)
+node_modules/
