@@ -86,10 +86,16 @@ window.QuizView = (function () {
       const bookmarked = window.Storage.isBookmarked(level, unit.id, state.i);
 
       let body = "";
+      let shuffled = null;
       if (q.type === "mcq") {
-        body = q.choices
+        shuffled = q.choices.map((c, idx) => ({ c, idx }));
+        for (let i = shuffled.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+        body = shuffled
           .map(
-            (c, idx) => `<button class="choice" data-i="${idx}">${escapeHtml(c)}</button>`
+            (s, pos) => `<button class="choice" data-orig="${s.idx}" data-pos="${pos}">${escapeHtml(s.c)}</button>`
           )
           .join("");
       } else {
@@ -157,12 +163,13 @@ window.QuizView = (function () {
 
     function handleMcq(btn, q, nextBtn) {
       const choices = root.querySelectorAll(".choice");
-      const picked = Number(btn.dataset.i);
+      const picked = Number(btn.dataset.orig);
       const correct = q.answer === picked;
-      choices.forEach((c, idx) => {
+      choices.forEach((c) => {
         c.classList.add("disabled");
-        if (idx === q.answer) c.classList.add("correct");
-        else if (idx === picked) c.classList.add("wrong");
+        const orig = Number(c.dataset.orig);
+        if (orig === q.answer) c.classList.add("correct");
+        else if (orig === picked) c.classList.add("wrong");
       });
       showFeedback(correct, q.explain);
       if (correct) state.correct += 1;
