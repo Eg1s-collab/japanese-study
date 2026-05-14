@@ -124,8 +124,18 @@ h3 { margin: 0 0 6px; font-size: 16px; }
 .subtle { color: var(--muted); font-size: 13px; }
 
 .unit-list { display:grid; grid-template-columns: repeat(auto-fill,minmax(260px,1fr)); gap: 12px; }
-.unit-card { cursor:pointer; transition: transform .12s ease, box-shadow .12s ease; }
+.unit-card { cursor:pointer; position: relative; transition: transform .12s ease, box-shadow .12s ease, opacity .15s ease; }
 .unit-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.08); }
+.unit-card.dim { opacity: 0.45; }
+.unit-card.dim:hover { opacity: 0.85; }
+.unit-card .done-badge {
+  position: absolute; top: 10px; right: 10px;
+  width: 22px; height: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--ok); color: #fff;
+  border-radius: 50%; font-size: 13px; font-weight: 700;
+  box-shadow: 0 2px 6px rgba(0,0,0,.15);
+}
 .unit-card .badge {
   display:inline-block; font-size: 12px; padding:2px 8px;
   background: var(--accent-soft); color: var(--accent); border-radius: 999px;

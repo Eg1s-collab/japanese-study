@@ -37,23 +37,49 @@ window.QuizView = (function () {
       const isLast = state.i === total - 1;
 
       if (state.i >= total) {
+        const LP = window.LessonProgress;
+        const pct = total > 0 ? (state.correct / total) * 100 : 0;
+        const eligible = pct >= 80;
+        const dismissed = LP && LP.isDismissed(level, unit.id);
+        let masteryBtn = "";
+        if (eligible && !dismissed) {
+          masteryBtn = `<button class="btn primary" id="dismissBtn">✓ เรียบร้อย — ซ่อนบทนี้</button>`;
+        } else if (dismissed) {
+          masteryBtn = `<button class="btn ghost" id="undismissBtn">↺ ยกเลิกการซ่อน</button>`;
+        }
         root.innerHTML = `
           <div class="score-card">
             <div>
               <h2 style="margin:0;">จบแบบฝึกหัด!</h2>
               <p class="subtle">${escapeHtml(unit.title)}</p>
+              ${eligible ? `<p class="subtle" style="margin-top:4px;color:var(--ok);">เก่งมาก! คะแนน ${Math.round(pct)}%</p>` : ""}
             </div>
             <div class="score-num">${state.correct} / ${total}</div>
           </div>
           <div class="btn-row">
             <button class="btn" id="againBtn">ทำใหม่</button>
             <button class="btn ghost" id="pickBtn">เลือก unit อื่น</button>
+            ${masteryBtn}
           </div>
         `;
         root.querySelector("#againBtn").addEventListener("click", () => {
           state.i = 0; state.correct = 0; state.answered = []; draw();
         });
         root.querySelector("#pickBtn").addEventListener("click", () => onDone(null));
+        const dBtn = root.querySelector("#dismissBtn");
+        if (dBtn) {
+          dBtn.addEventListener("click", () => {
+            LP.setDismissed(level, unit.id, true, state.correct, total);
+            draw();
+          });
+        }
+        const uBtn = root.querySelector("#undismissBtn");
+        if (uBtn) {
+          uBtn.addEventListener("click", () => {
+            LP.setDismissed(level, unit.id, false, state.correct, total);
+            draw();
+          });
+        }
         return;
       }
 

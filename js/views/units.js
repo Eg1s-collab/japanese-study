@@ -7,18 +7,24 @@ window.UnitsView = (function () {
     const lv = window.LEVELS[level];
     if (!lv) return "<div class='empty'>ไม่พบระดับ</div>";
 
+    const LP = window.LessonProgress;
     const cards = lv.units
-      .map(
-        (u) => `
-        <article class="card unit-card" data-id="${u.id}">
+      .map((u) => {
+        const dismissed = LP && LP.isDismissed(level, u.id);
+        const rec = LP && LP.getRecord(level, u.id);
+        const scoreBit = dismissed && rec && typeof rec.lastScore === "number"
+          ? ` · คะแนน ${rec.lastScore}/${rec.lastTotal}` : "";
+        return `
+        <article class="card unit-card ${dismissed ? "dim" : ""}" data-id="${u.id}">
+          ${dismissed ? `<span class="done-badge" title="เรียบร้อยแล้ว">✓</span>` : ""}
           <span class="badge">${lv.label}</span>
           <h3>${escapeHtml(u.title)}</h3>
           <p class="subtle">${escapeHtml(u.summary || "")}</p>
           <div class="subtle" style="margin-top:8px;">
-            ${u.points.length} หัวข้อ · ${u.quiz.length} ข้อแบบฝึก
+            ${u.points.length} หัวข้อ · ${u.quiz.length} ข้อแบบฝึก${scoreBit}
           </div>
-        </article>`
-      )
+        </article>`;
+      })
       .join("");
 
     const root = document.createElement("div");
@@ -58,11 +64,15 @@ window.UnitsView = (function () {
       )
       .join("");
 
+    const LP = window.LessonProgress;
+    const dismissed = LP && LP.isDismissed(level, unit.id);
+
     const root = document.createElement("div");
     root.innerHTML = `
       <div class="btn-row">
         <button class="btn ghost" id="backBtn">← กลับไปรายการ</button>
         <button class="btn primary" id="quizBtn">เริ่มทำแบบฝึกหัดของ unit นี้</button>
+        ${dismissed ? `<button class="btn ghost" id="unhideBtn">↺ ยกเลิกการซ่อน</button>` : ""}
       </div>
       <div class="card">
         <h2>${escapeHtml(unit.title)}</h2>
@@ -72,6 +82,13 @@ window.UnitsView = (function () {
     `;
     root.querySelector("#backBtn").addEventListener("click", onBack);
     root.querySelector("#quizBtn").addEventListener("click", () => onStartQuiz(unit.id));
+    const unhideBtn = root.querySelector("#unhideBtn");
+    if (unhideBtn) {
+      unhideBtn.addEventListener("click", () => {
+        LP.setDismissed(level, unit.id, false);
+        onBack();
+      });
+    }
     return root;
   }
 
