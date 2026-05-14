@@ -94,7 +94,10 @@ window.QuizView = (function () {
           .join("");
       } else {
         body = `
-          <input type="text" class="txt-input" id="ansInput" placeholder="พิมพ์คำตอบ..." autocomplete="off" />
+          <input type="text" class="txt-input" id="ansInput"
+            placeholder="พิมพ์คำตอบ หรือกดแป้นพิมพ์ด้านล่าง"
+            autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
+          <div id="kbSlot"></div>
           <div class="btn-row">
             <button class="btn primary" id="submitBtn">ตรวจคำตอบ</button>
           </div>
@@ -140,6 +143,10 @@ window.QuizView = (function () {
       } else {
         const input = root.querySelector("#ansInput");
         input.focus();
+        if (window.KanaKeypad) {
+          const slot = root.querySelector("#kbSlot");
+          if (slot) slot.appendChild(window.KanaKeypad.create(input));
+        }
         const submit = () => handleFill(input, q, nextBtn);
         root.querySelector("#submitBtn").addEventListener("click", submit);
         input.addEventListener("keydown", (e) => {

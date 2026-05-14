@@ -13,28 +13,6 @@
 window.ConjugationView = (function () {
   const STORAGE_LEVEL = "all";
 
-  // Compact iOS-style 12-key kana keypad. Tap a base row (e.g. "か") to
-  // pop up all variants for that row (incl. dakuten / handakuten / small).
-  const KANA_ROWS = {
-    "あ": ["あ","い","う","え","お"],
-    "か": ["か","き","く","け","こ","が","ぎ","ぐ","げ","ご"],
-    "さ": ["さ","し","す","せ","そ","ざ","じ","ず","ぜ","ぞ"],
-    "た": ["た","ち","つ","て","と","だ","ぢ","づ","で","ど","っ"],
-    "な": ["な","に","ぬ","ね","の"],
-    "は": ["は","ひ","ふ","へ","ほ","ば","び","ぶ","べ","ぼ","ぱ","ぴ","ぷ","ぺ","ぽ"],
-    "ま": ["ま","み","む","め","も"],
-    "や": ["や","ゆ","よ","ゃ","ゅ","ょ"],
-    "ら": ["ら","り","る","れ","ろ"],
-    "わ": ["わ","を","ん","ー"]
-  };
-  // 4×4 grid layout. Each cell is either a row-base char, a control id, or null spacer.
-  const KEYBOARD_LAYOUT = [
-    ["あ", "か", "さ", { ctl: "bksp",  label: "⌫"   }],
-    ["た", "な", "は", null],
-    ["ま", "や", "ら", null],
-    [null, "わ", null, { ctl: "clear", label: "ล้าง" }]
-  ];
-
   // Aggregate verbs / adjectives / formLabels across all configured levels.
   // First-occurrence wins on duplicates (keyed by dict / word).
   function aggregate() {
@@ -132,24 +110,6 @@ window.ConjugationView = (function () {
         }).join("");
       }
 
-      const kbCells = KEYBOARD_LAYOUT.flat().map((cell) => {
-        if (cell === null) return `<span class="kana-key kana-spacer" aria-hidden="true"></span>`;
-        if (typeof cell === "string") {
-          return `<button type="button" class="kana-key" data-row="${cell}">${cell}</button>`;
-        }
-        if (cell.ctl === "bksp") {
-          return `<button type="button" class="kana-key kana-cmd kana-bksp" id="kanaBksp" aria-label="ลบ">${cell.label}</button>`;
-        }
-        if (cell.ctl === "clear") {
-          return `<button type="button" class="kana-key kana-cmd kana-clear" id="kanaClear">${cell.label}</button>`;
-        }
-        return "";
-      }).join("");
-      const kbHtml = `
-        <div class="kana-popup" id="kanaPopup" role="listbox" aria-label="เลือกตัวอักษร"></div>
-        <div class="kana-grid" id="kanaKb">${kbCells}</div>
-      `;
-
       root.innerHTML = `
         <h2>ฝึกผันคำ</h2>
 
@@ -187,7 +147,7 @@ window.ConjugationView = (function () {
           <input type="text" class="txt-input" id="ansInput"
             placeholder="พิมพ์คำตอบ หรือกดแป้นพิมพ์ด้านล่าง"
             autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
-          <div class="kana-keyboard">${kbHtml}</div>
+          <div id="kbSlot"></div>
           <div class="btn-row">
             <button class="btn primary" id="checkBtn">ตรวจ</button>
             <button class="btn ghost" id="showBtn">เฉลย</button>
@@ -230,45 +190,10 @@ window.ConjugationView = (function () {
         draw();
       });
 
-      // On-screen kana keypad: tap a base row → popup with variants. Tapping
-      // the same row toggles the popup closed. preventDefault on mousedown
-      // keeps the input focused so the cursor doesn't blink off between taps.
-      const kbWrap = root.querySelector(".kana-keyboard");
-      const popup = root.querySelector("#kanaPopup");
-      function hidePopup() {
-        popup.style.display = "none";
-        popup.innerHTML = "";
-        popup.removeAttribute("data-row");
+      if (window.KanaKeypad) {
+        const slot = root.querySelector("#kbSlot");
+        if (slot) slot.appendChild(window.KanaKeypad.create(input));
       }
-      function showPopup(rowKey) {
-        popup.innerHTML = (KANA_ROWS[rowKey] || []).map((c) =>
-          `<button type="button" class="kana-pop" data-c="${c}">${c}</button>`
-        ).join("");
-        popup.style.display = "flex";
-        popup.dataset.row = rowKey;
-      }
-      kbWrap.addEventListener("mousedown", (e) => {
-        if (e.target.closest("button")) e.preventDefault();
-      });
-      kbWrap.addEventListener("click", (e) => {
-        const btn = e.target.closest("button");
-        if (!btn) return;
-        if (btn.classList.contains("kana-pop")) {
-          const c = btn.dataset.c;
-          if (c) input.value += c;
-          hidePopup();
-        } else if (btn.id === "kanaBksp") {
-          input.value = input.value.slice(0, -1);
-          hidePopup();
-        } else if (btn.id === "kanaClear") {
-          input.value = "";
-          hidePopup();
-        } else if (btn.dataset.row) {
-          if (popup.dataset.row === btn.dataset.row) hidePopup();
-          else showPopup(btn.dataset.row);
-        }
-        input.focus();
-      });
     }
 
     function expected() {
