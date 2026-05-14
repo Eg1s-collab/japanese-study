@@ -403,3 +403,39 @@ h3 { margin: 0 0 6px; font-size: 16px; }
 }
 .fc-speak { flex-shrink: 0; }
 
+/* Sticky toolbar so toggles stay reachable on empty / finish screens */
+.fc-toolbar-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.fc-chunk-row {
+  display: flex; flex-wrap: wrap; gap: 14px; align-items: center;
+}
+.fc-chunk-row .level-select { font-size: 14px; }
+
+.fc-mode-row {
+  display: flex; gap: 14px; align-items: center; justify-content: space-between;
+  flex-wrap: wrap;
+}
+.fc-mode-meta { flex: 1 1 240px; min-width: 0; }
+.fc-mode-title { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+
+.fc-mini-prog { margin: 8px 0 4px; }
+.fc-mini-row {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--muted);
+  margin: 4px 0;
+}
+.fc-mini-row .progress { height: 6px; margin: 0; }
+
+@media (max-width: 600px) {
+  .fc-mode-row .btn-row { width: 100%; justify-content: flex-end; }
+  .fc-chunk-row { flex-direction: column; align-items: stretch; }
+}
+

@@ -3,28 +3,33 @@
  *
  * Sub-screens (kept in `screen`):
  *   - "home":  folder + deck browser
- *   - "deck":  word list for a deck (add/import/edit/star)
- *   - "cards": flash-card review for a deck
- *   - "learn": 4-choice quiz for a deck
+ *   - "deck":  word list for a deck (chunk control + per-mode progress)
+ *   - "cards": flash-card review for the current chunk of a deck
+ *   - "learn": 4-choice quiz for the current chunk of a deck
+ *
+ * Progress is persisted per-deck via FlashcardsStorage (seenIds for cards,
+ * completedIds + attempts/correct for learn) and survives reloads + cloud
+ * sync. Pool for each mode = current chunk → optional star filter →
+ * optional shuffle (cards only). Progress bars track unique words
+ * finished within the current pool.
  */
 window.FlashcardsView = (function () {
   const FS = () => window.FlashcardsStorage;
 
   const state = {
     screen: "home",
-    folderId: null,         // null = root / “ทั้งหมด”
+    folderId: null,
     deckId: null,
-    // mode options (per-deck, transient)
     cardsOpts: { shuffle: false, swap: false, starredOnly: false },
     learnOpts: { swap: false, starredOnly: false }
   };
 
+  /* ---------- utils ---------- */
   function escapeHtml(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
     }[c]));
   }
-
   function hasJapanese(s) {
     return /[\u3040-\u30ff\u3400-\u9fff\uff66-\uff9f]/.test(String(s || ""));
   }
@@ -38,7 +43,6 @@ window.FlashcardsView = (function () {
       window.speechSynthesis.speak(u);
     } catch (e) { /* ignore */ }
   }
-
   function shuffleArr(arr) {
     const a = arr.slice();
     for (let i = a.length - 1; i > 0; i--) {
@@ -46,6 +50,12 @@ window.FlashcardsView = (function () {
       [a[i], a[j]] = [a[j], a[i]];
     }
     return a;
+  }
+  function chunkLabel(deck) {
+    if (!deck.chunkSize) return `ทั้งหมด (${deck.words.length} คำ)`;
+    const total = FS().chunkCount(deck);
+    const r = FS().chunkRange(deck);
+    return `ชุด ${deck.selectedChunk + 1}/${total} (คำ ${r.from}-${r.to})`;
   }
 
   /* ===================== top-level render ===================== */
@@ -57,7 +67,6 @@ window.FlashcardsView = (function () {
     else if (state.screen === "learn") root.appendChild(renderLearn());
     return root;
   }
-
   function refresh(container) {
     const fresh = render();
     container.replaceWith(fresh);
@@ -85,10 +94,8 @@ window.FlashcardsView = (function () {
       <p class="subtle">${folder ? "ชุดคำในโฟลเดอร์นี้" : "โฟลเดอร์และชุดคำที่ยังไม่จัดเข้าโฟลเดอร์"}</p>
       <div id="fc-body"></div>
     `;
-
     const body = root.querySelector("#fc-body");
 
-    // Folders grid (only at root)
     if (!state.folderId && data.folders.length) {
       const folders = document.createElement("div");
       folders.className = "unit-list";
@@ -123,18 +130,27 @@ window.FlashcardsView = (function () {
       body.appendChild(folders);
     }
 
-    // Decks grid
     if (visibleDecks.length) {
       const decks = document.createElement("div");
       decks.className = "unit-list";
       decks.style.marginTop = (state.folderId ? "0" : "14px");
       visibleDecks.forEach((d) => {
         const starred = d.words.filter((w) => w.starred).length;
+        const cardsDone = (d.progress && d.progress.cards) ? d.progress.cards.seenIds.length : 0;
+        const learnDone = (d.progress && d.progress.learn) ? d.progress.learn.completedIds.length : 0;
+        const pctC = d.words.length ? Math.round((cardsDone / d.words.length) * 100) : 0;
+        const pctL = d.words.length ? Math.round((learnDone / d.words.length) * 100) : 0;
         const card = document.createElement("div");
         card.className = "card unit-card";
         card.innerHTML = `
-          <div class="badge">📚 ${d.words.length} คำ${starred ? ` · ⭐ ${starred}` : ""}</div>
+          <div class="badge">📚 ${d.words.length} คำ${starred ? ` · ⭐ ${starred}` : ""}${d.chunkSize ? ` · แบ่ง ${d.chunkSize}` : ""}</div>
           <h3>${escapeHtml(d.name)}</h3>
+          <div class="fc-mini-prog">
+            <div class="fc-mini-row"><span>📇 ${cardsDone}/${d.words.length}</span>
+              <div class="progress"><div class="bar" style="width:${pctC}%"></div></div></div>
+            <div class="fc-mini-row"><span>🎯 ${learnDone}/${d.words.length}</span>
+              <div class="progress"><div class="bar" style="width:${pctL}%"></div></div></div>
+          </div>
           <div class="btn-row">
             <button class="btn primary" data-open>เปิด</button>
             <button class="btn ghost" data-move>ย้าย</button>
@@ -197,7 +213,6 @@ window.FlashcardsView = (function () {
       const d = FS().createDeck(n, state.folderId);
       state.screen = "deck"; state.deckId = d.id; refresh(root);
     });
-
     return root;
   }
 
@@ -207,45 +222,128 @@ window.FlashcardsView = (function () {
     if (!deck) { state.screen = "home"; return renderHome(); }
 
     const root = document.createElement("div");
-    root.innerHTML = `
-      <div class="qmeta">
-        <h2 style="margin:0;">${escapeHtml(deck.name)}</h2>
-        <button class="btn ghost" id="backHome">← กลับ</button>
-      </div>
-      <p class="subtle">${deck.words.length} คำ · ⭐ ${deck.words.filter((w) => w.starred).length}</p>
 
-      <div class="card">
-        <div class="btn-row" style="margin:0;">
-          <button class="btn primary" id="goCards">📇 Flash Cards</button>
-          <button class="btn primary" id="goLearn">🎯 Learn</button>
-          <button class="btn" id="importBtn">⬆︎ นำเข้า CSV</button>
-          <input type="file" id="csvFile" accept=".csv,text/csv" style="display:none;" />
+    function poolWords() { return FS().chunkWords(deck); }
+    function poolIds() { return new Set(poolWords().map((w) => w.id)); }
+    function cardsProgressInPool() {
+      const pool = poolIds();
+      return deck.progress.cards.seenIds.filter((id) => pool.has(id)).length;
+    }
+    function learnProgressInPool() {
+      const pool = poolIds();
+      return deck.progress.learn.completedIds.filter((id) => pool.has(id)).length;
+    }
+
+    function draw() {
+      const d = FS().getDeck(state.deckId);
+      // refresh local closure
+      Object.assign(deck, d);
+
+      const total = deck.words.length;
+      const starred = deck.words.filter((w) => w.starred).length;
+      const chunkTotal = FS().chunkCount(deck);
+      const poolSize = poolWords().length;
+      const seenInPool = cardsProgressInPool();
+      const doneInPool = learnProgressInPool();
+      const pctC = poolSize ? Math.round((seenInPool / poolSize) * 100) : 0;
+      const pctL = poolSize ? Math.round((doneInPool / poolSize) * 100) : 0;
+
+      const chunkOpts = [25, 50, 100].map((n) =>
+        `<option value="${n}" ${deck.chunkSize === n ? "selected" : ""}>${n} คำ/ชุด</option>`
+      ).join("");
+      const chunkPickerOpts = Array.from({ length: chunkTotal }, (_, i) => {
+        const from = i * deck.chunkSize + 1;
+        const to = Math.min(total, (i + 1) * deck.chunkSize);
+        return `<option value="${i}" ${i === deck.selectedChunk ? "selected" : ""}>ชุด ${i + 1} (คำ ${from}-${to})</option>`;
+      }).join("");
+
+      root.innerHTML = `
+        <div class="qmeta">
+          <h2 style="margin:0;">${escapeHtml(deck.name)}</h2>
+          <button class="btn ghost" id="backHome">← กลับ</button>
         </div>
-      </div>
+        <p class="subtle">${total} คำ · ⭐ ${starred}</p>
 
-      <div class="card">
-        <h3 style="margin-top:0;">เพิ่มคำใหม่</h3>
-        <div class="fc-add-row">
-          <input class="txt-input" id="newFront" placeholder="ด้านหน้า (เช่น 会う(あう))" />
-          <input class="txt-input" id="newBack" placeholder="ด้านหลัง (เช่น พบ, เจอ)" />
-          <button class="btn primary" id="addBtn">+ เพิ่ม</button>
+        <div class="card">
+          <h3 style="margin-top:0;">แบ่งชุดย่อย</h3>
+          <div class="fc-chunk-row">
+            <label class="fc-toggle" style="gap:8px;">
+              <span>ขนาดชุด:</span>
+              <select id="chunkSizeSel" class="level-select">
+                <option value="" ${!deck.chunkSize ? "selected" : ""}>ทั้งหมด</option>
+                ${chunkOpts}
+                <option value="custom">กำหนดเอง…</option>
+              </select>
+            </label>
+            ${deck.chunkSize ? `
+              <label class="fc-toggle" style="gap:8px;">
+                <span>เลือกชุด:</span>
+                <select id="chunkIdxSel" class="level-select">${chunkPickerOpts}</select>
+              </label>` : ""}
+          </div>
+          <p class="subtle" style="margin:8px 0 0;">ใช้กับ ${escapeHtml(chunkLabel(deck))}</p>
         </div>
-      </div>
 
-      <div class="card">
-        <h3 style="margin-top:0;">คำศัพท์ในชุดนี้</h3>
-        <div id="wordList"></div>
-      </div>
-    `;
+        <div class="card">
+          <div class="fc-mode-row">
+            <div class="fc-mode-meta">
+              <div class="fc-mode-title">📇 Flash Cards</div>
+              <div class="qprog">${seenInPool} / ${poolSize}</div>
+              <div class="progress"><div class="bar" style="width:${pctC}%"></div></div>
+            </div>
+            <div class="btn-row" style="margin:0;">
+              <button class="btn primary" id="goCards">${seenInPool > 0 && seenInPool < poolSize ? "ทำต่อ" : "เริ่ม"}</button>
+              <button class="btn ghost" id="resetCards" ${seenInPool === 0 ? "disabled" : ""}>รีเซ็ต</button>
+            </div>
+          </div>
+          <hr style="border:none; border-top:1px solid var(--line); margin:14px 0;" />
+          <div class="fc-mode-row">
+            <div class="fc-mode-meta">
+              <div class="fc-mode-title">🎯 Learn</div>
+              <div class="qprog">${doneInPool} / ${poolSize} · ตอบไป ${deck.progress.learn.attempts} ครั้ง · ถูก ${deck.progress.learn.correct}</div>
+              <div class="progress"><div class="bar" style="width:${pctL}%"></div></div>
+            </div>
+            <div class="btn-row" style="margin:0;">
+              <button class="btn primary" id="goLearn">${doneInPool > 0 && doneInPool < poolSize ? "ทำต่อ" : "เริ่ม"}</button>
+              <button class="btn ghost" id="resetLearn" ${doneInPool === 0 && deck.progress.learn.attempts === 0 ? "disabled" : ""}>รีเซ็ต</button>
+            </div>
+          </div>
+        </div>
 
-    function drawList() {
+        <div class="card">
+          <div class="btn-row" style="margin:0;">
+            <button class="btn" id="importBtn">⬆︎ นำเข้า CSV</button>
+            <input type="file" id="csvFile" accept=".csv,text/csv" style="display:none;" />
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-top:0;">เพิ่มคำใหม่</h3>
+          <div class="fc-add-row">
+            <input class="txt-input" id="newFront" placeholder="ด้านหน้า (เช่น 会う(あう))" />
+            <input class="txt-input" id="newBack" placeholder="ด้านหลัง (เช่น พบ, เจอ)" />
+            <button class="btn primary" id="addBtn">+ เพิ่ม</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-top:0;">คำศัพท์ใน ${escapeHtml(chunkLabel(deck))}</h3>
+          <div id="wordList"></div>
+        </div>
+      `;
+
+      drawWordList();
+      bindEvents();
+    }
+
+    function drawWordList() {
       const list = root.querySelector("#wordList");
-      const d = FS().getDeck(deck.id);
-      if (!d.words.length) {
+      const words = poolWords();
+      if (!words.length) {
         list.innerHTML = `<div class="empty">ยังไม่มีคำในชุดนี้</div>`;
         return;
       }
-      list.innerHTML = d.words.map((w) => `
+      list.innerHTML = words.map((w) => `
         <div class="fc-word" data-id="${w.id}">
           <button class="star ${w.starred ? "on" : ""}" data-star title="ติดดาว">★</button>
           <div class="fc-word-text">
@@ -253,7 +351,7 @@ window.FlashcardsView = (function () {
             <div class="fc-back">${escapeHtml(w.back)}</div>
           </div>
           <div class="fc-word-actions">
-            <button class="btn ghost" data-edit>แก้ไข</button>
+            <button class="btn ghost" data-edit>แก้</button>
             <button class="btn ghost" data-del>ลบ</button>
           </div>
         </div>
@@ -263,13 +361,13 @@ window.FlashcardsView = (function () {
         btn.addEventListener("click", () => {
           const wid = btn.closest(".fc-word").dataset.id;
           FS().toggleStar(deck.id, wid);
-          drawList();
+          draw();
         });
       });
       list.querySelectorAll("[data-del]").forEach((btn) => {
         btn.addEventListener("click", () => {
           const wid = btn.closest(".fc-word").dataset.id;
-          if (confirm("ลบคำนี้?")) { FS().deleteWord(deck.id, wid); drawList(); }
+          if (confirm("ลบคำนี้?")) { FS().deleteWord(deck.id, wid); draw(); }
         });
       });
       list.querySelectorAll("[data-edit]").forEach((btn) => {
@@ -281,53 +379,83 @@ window.FlashcardsView = (function () {
           const b = prompt("ด้านหลัง:", w.back);
           if (b == null) return;
           FS().updateWord(deck.id, wid, f, b);
-          drawList();
+          draw();
         });
       });
     }
-    drawList();
 
-    root.querySelector("#backHome").addEventListener("click", () => {
-      state.screen = "home"; state.deckId = null; refresh(root);
-    });
-    root.querySelector("#goCards").addEventListener("click", () => {
-      if (!FS().getDeck(deck.id).words.length) return alert("ยังไม่มีคำในชุดนี้");
-      state.screen = "cards"; refresh(root);
-    });
-    root.querySelector("#goLearn").addEventListener("click", () => {
-      const d = FS().getDeck(deck.id);
-      if (d.words.length < 4) return alert("ต้องมีอย่างน้อย 4 คำเพื่อใช้โหมด Learn");
-      state.screen = "learn"; refresh(root);
-    });
-    root.querySelector("#addBtn").addEventListener("click", () => {
-      const f = root.querySelector("#newFront");
-      const b = root.querySelector("#newBack");
-      if (!f.value.trim() && !b.value.trim()) return;
-      FS().addWord(deck.id, f.value, b.value);
-      f.value = ""; b.value = ""; f.focus();
-      drawList();
-      // also refresh meta line
-      const meta = root.querySelector("p.subtle");
-      const d = FS().getDeck(deck.id);
-      meta.textContent = `${d.words.length} คำ · ⭐ ${d.words.filter((w) => w.starred).length}`;
-    });
-    root.querySelector("#importBtn").addEventListener("click", () => {
-      root.querySelector("#csvFile").click();
-    });
-    root.querySelector("#csvFile").addEventListener("change", (e) => {
-      const input = e.target;
-      const file = input.files && input.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        const res = FS().importCSV(deck.id, reader.result);
-        input.value = ""; // allow re-selecting the same file
-        alert(`นำเข้าแล้ว ${res.added} คำ`);
-        refresh(root);
-      };
-      reader.readAsText(file, "utf-8");
-    });
+    function bindEvents() {
+      root.querySelector("#backHome").addEventListener("click", () => {
+        state.screen = "home"; state.deckId = null; refresh(root);
+      });
 
+      const sizeSel = root.querySelector("#chunkSizeSel");
+      sizeSel.addEventListener("change", () => {
+        const v = sizeSel.value;
+        if (v === "custom") {
+          const n = prompt("ขนาดต่อชุด (จำนวนคำ):", deck.chunkSize || 50);
+          const num = parseInt(n, 10);
+          if (!isNaN(num) && num > 0) FS().setChunkSize(deck.id, num);
+          draw();
+          return;
+        }
+        FS().setChunkSize(deck.id, v ? Number(v) : null);
+        draw();
+      });
+      const idxSel = root.querySelector("#chunkIdxSel");
+      if (idxSel) {
+        idxSel.addEventListener("change", () => {
+          FS().setSelectedChunk(deck.id, Number(idxSel.value));
+          draw();
+        });
+      }
+
+      root.querySelector("#goCards").addEventListener("click", () => {
+        if (!poolWords().length) return alert("ยังไม่มีคำในชุดย่อยนี้");
+        state.screen = "cards"; refresh(root);
+      });
+      root.querySelector("#resetCards").addEventListener("click", () => {
+        if (confirm("รีเซ็ตความคืบหน้า Flash Cards ของชุดคำนี้?")) {
+          FS().clearProgress(deck.id, "cards"); draw();
+        }
+      });
+      root.querySelector("#goLearn").addEventListener("click", () => {
+        if (poolWords().length < 4) return alert("ต้องมีอย่างน้อย 4 คำในชุดย่อยเพื่อใช้โหมด Learn");
+        state.screen = "learn"; refresh(root);
+      });
+      root.querySelector("#resetLearn").addEventListener("click", () => {
+        if (confirm("รีเซ็ตความคืบหน้า Learn ของชุดคำนี้?")) {
+          FS().clearProgress(deck.id, "learn"); draw();
+        }
+      });
+
+      root.querySelector("#addBtn").addEventListener("click", () => {
+        const f = root.querySelector("#newFront");
+        const b = root.querySelector("#newBack");
+        if (!f.value.trim() && !b.value.trim()) return;
+        FS().addWord(deck.id, f.value, b.value);
+        f.value = ""; b.value = ""; f.focus();
+        draw();
+      });
+      root.querySelector("#importBtn").addEventListener("click", () => {
+        root.querySelector("#csvFile").click();
+      });
+      root.querySelector("#csvFile").addEventListener("change", (e) => {
+        const input = e.target;
+        const file = input.files && input.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          const res = FS().importCSV(deck.id, reader.result);
+          input.value = "";
+          alert(`นำเข้าแล้ว ${res.added} คำ`);
+          draw();
+        };
+        reader.readAsText(file, "utf-8");
+      });
+    }
+
+    draw();
     return root;
   }
 
@@ -338,71 +466,129 @@ window.FlashcardsView = (function () {
 
     const root = document.createElement("div");
 
-    function startList() {
-      let pool = state.cardsOpts.starredOnly ? deck.words.filter((w) => w.starred) : deck.words.slice();
+    // Build the pool (chunk → optional star filter → optional shuffle).
+    // We re-build whenever options change.
+    function buildPool() {
+      let pool = FS().chunkWords(FS().getDeck(deck.id));
+      if (state.cardsOpts.starredOnly) pool = pool.filter((w) => w.starred);
       if (state.cardsOpts.shuffle) pool = shuffleArr(pool);
       return pool;
     }
-    let cards = startList();
+    let pool = buildPool();
     let i = 0;
     let flipped = false;
+
+    // Resume at first unseen card in pool (so progress persists across visits).
+    function resumeIndex() {
+      const seen = new Set((FS().getDeck(deck.id).progress.cards.seenIds) || []);
+      const idx = pool.findIndex((w) => !seen.has(w.id));
+      return idx < 0 ? 0 : idx;
+    }
+    i = resumeIndex();
 
     function frontOf(w) { return state.cardsOpts.swap ? w.back : w.front; }
     function backOf(w)  { return state.cardsOpts.swap ? w.front : w.back; }
 
-    function draw() {
-      const total = cards.length;
+    function seenSet() {
+      return new Set(FS().getDeck(deck.id).progress.cards.seenIds || []);
+    }
 
-      if (!total) {
-        root.innerHTML = `
-          <div class="qmeta">
-            <h2 style="margin:0;">📇 ${escapeHtml(deck.name)}</h2>
-            <button class="btn ghost" id="back">← กลับ</button>
-          </div>
-          <div class="empty">ไม่มีคำให้รีวิว (ลองปิด "ดาวเท่านั้น")</div>
-        `;
-        root.querySelector("#back").addEventListener("click", goBack);
-        return;
-      }
-
-      if (i >= total) {
-        root.innerHTML = `
-          <div class="score-card">
-            <div>
-              <h2 style="margin:0;">รีวิวจบแล้ว!</h2>
-              <p class="subtle">${escapeHtml(deck.name)} · ${total} คำ</p>
-            </div>
-            <div class="score-num">✓</div>
-          </div>
-          <div class="btn-row">
-            <button class="btn primary" id="restart">เริ่มใหม่</button>
-            <button class="btn ghost" id="back">กลับสู่ชุดคำ</button>
-          </div>
-        `;
-        root.querySelector("#restart").addEventListener("click", () => {
-          cards = startList(); i = 0; flipped = false; draw();
+    function renderToolbar() {
+      return `
+        <div class="fc-toolbar fc-toolbar-sticky">
+          <label class="fc-toggle"><input type="checkbox" data-opt="shuffle" ${state.cardsOpts.shuffle ? "checked" : ""}/> สลับลำดับ</label>
+          <label class="fc-toggle"><input type="checkbox" data-opt="swap" ${state.cardsOpts.swap ? "checked" : ""}/> สลับด้าน</label>
+          <label class="fc-toggle"><input type="checkbox" data-opt="starredOnly" ${state.cardsOpts.starredOnly ? "checked" : ""}/> ดาวเท่านั้น</label>
+        </div>
+      `;
+    }
+    function bindToolbar() {
+      root.querySelectorAll(".fc-toolbar input[data-opt]").forEach((cb) => {
+        cb.addEventListener("change", () => {
+          const opt = cb.dataset.opt;
+          state.cardsOpts[opt] = cb.checked;
+          pool = buildPool();
+          i = resumeIndex();
+          flipped = false;
+          draw();
         });
-        root.querySelector("#back").addEventListener("click", goBack);
-        return;
-      }
-
-      const w = cards[i];
-      const pct = Math.round(((i) / total) * 100);
-      const shownText = flipped ? backOf(w) : frontOf(w);
-
-      root.innerHTML = `
+      });
+    }
+    function renderHeader() {
+      return `
         <div class="qmeta">
           <h2 style="margin:0;">📇 ${escapeHtml(deck.name)}</h2>
           <button class="btn ghost" id="back">← กลับ</button>
         </div>
+        <p class="subtle">${escapeHtml(chunkLabel(deck))}</p>
+      `;
+    }
+    function bindHeader() {
+      root.querySelector("#back").addEventListener("click", goBack);
+    }
 
-        <div class="fc-toolbar">
-          <label class="fc-toggle"><input type="checkbox" id="optShuffle" ${state.cardsOpts.shuffle ? "checked" : ""}/> สลับลำดับ</label>
-          <label class="fc-toggle"><input type="checkbox" id="optSwap" ${state.cardsOpts.swap ? "checked" : ""}/> สลับด้าน</label>
-          <label class="fc-toggle"><input type="checkbox" id="optStar" ${state.cardsOpts.starredOnly ? "checked" : ""}/> ดาวเท่านั้น</label>
-        </div>
+    function draw() {
+      const total = pool.length;
+      const seen = seenSet();
+      const seenInPool = pool.filter((w) => seen.has(w.id)).length;
+      const pct = total ? Math.round((seenInPool / total) * 100) : 0;
 
-        <div class="qprog">${i + 1} / ${total}</div>
+      // Empty pool
+      if (!total) {
+        root.innerHTML = `
+          ${renderHeader()}
+          ${renderToolbar()}
+          <div class="empty">ไม่มีคำให้รีวิวในชุดย่อยนี้${state.cardsOpts.starredOnly ? " (ลองปิด \"ดาวเท่านั้น\")" : ""}</div>
+        `;
+        bindHeader(); bindToolbar();
+        return;
+      }
+
+      // Finished pool
+      if (i >= total) {
+        root.innerHTML = `
+          ${renderHeader()}
+          ${renderToolbar()}
+          <div class="qprog">${seenInPool} / ${total}</div>
+          <div class="progress ok"><div class="bar" style="width:${pct}%"></div></div>
+          <div class="score-card">
+            <div>
+              <h2 style="margin:0;">รีวิวจบแล้ว!</h2>
+              <p class="subtle">${escapeHtml(chunkLabel(deck))}</p>
+            </div>
+            <div class="score-num">✓</div>
+          </div>
+          <div class="btn-row">
+            <button class="btn primary" id="restart">เริ่มชุดย่อยนี้ใหม่</button>
+            <button class="btn ghost" id="back2">กลับสู่ชุดคำ</button>
+          </div>
+        `;
+        bindHeader(); bindToolbar();
+        root.querySelector("#restart").addEventListener("click", () => {
+          // Clear seen for words in current pool only — keep other chunks' progress
+          const ids = pool.map((w) => w.id);
+          const cur = FS().getDeck(deck.id);
+          cur.progress.cards.seenIds = cur.progress.cards.seenIds.filter((id) => !ids.includes(id));
+          // direct save via storage's setFromCloud-style write
+          const fullState = FS().load();
+          const d = fullState.decks.find((x) => x.id === deck.id);
+          if (d) {
+            d.progress.cards.seenIds = d.progress.cards.seenIds.filter((id) => !ids.includes(id));
+            FS().save(fullState);
+          }
+          pool = buildPool(); i = 0; flipped = false; draw();
+        });
+        root.querySelector("#back2").addEventListener("click", goBack);
+        return;
+      }
+
+      const w = pool[i];
+      const shownText = flipped ? backOf(w) : frontOf(w);
+
+      root.innerHTML = `
+        ${renderHeader()}
+        ${renderToolbar()}
+        <div class="qprog">${i + 1} / ${total} · เห็นแล้ว ${seenInPool}</div>
         <div class="progress"><div class="bar" style="width:${pct}%"></div></div>
 
         <div class="fc-flashcard ${flipped ? "is-flipped" : ""}" id="card" tabindex="0">
@@ -425,31 +611,20 @@ window.FlashcardsView = (function () {
         </div>
       `;
 
-      root.querySelector("#back").addEventListener("click", goBack);
+      bindHeader(); bindToolbar();
       root.querySelector("#card").addEventListener("click", () => { flipped = !flipped; draw(); });
       root.querySelector("#flipBtn").addEventListener("click", (e) => { e.stopPropagation(); flipped = !flipped; draw(); });
       root.querySelector("#prev").addEventListener("click", () => { if (i > 0) { i--; flipped = false; draw(); } });
-      root.querySelector("#next").addEventListener("click", () => { i++; flipped = false; draw(); });
+      root.querySelector("#next").addEventListener("click", () => {
+        FS().markCardSeen(deck.id, w.id);
+        i++; flipped = false; draw();
+      });
       root.querySelector("#starBtn").addEventListener("click", () => {
         FS().toggleStar(deck.id, w.id);
         w.starred = !w.starred;
         draw();
       });
-      root.querySelector("#speakBtn").addEventListener("click", () => {
-        speak(shownText);
-      });
-      root.querySelector("#optShuffle").addEventListener("change", (e) => {
-        state.cardsOpts.shuffle = e.target.checked;
-        cards = startList(); i = 0; flipped = false; draw();
-      });
-      root.querySelector("#optSwap").addEventListener("change", (e) => {
-        state.cardsOpts.swap = e.target.checked;
-        flipped = false; draw();
-      });
-      root.querySelector("#optStar").addEventListener("change", (e) => {
-        state.cardsOpts.starredOnly = e.target.checked;
-        cards = startList(); i = 0; flipped = false; draw();
-      });
+      root.querySelector("#speakBtn").addEventListener("click", () => speak(shownText));
     }
 
     function goBack() {
@@ -471,17 +646,22 @@ window.FlashcardsView = (function () {
     function frontOf(w) { return state.learnOpts.swap ? w.back : w.front; }
     function backOf(w)  { return state.learnOpts.swap ? w.front : w.back; }
 
-    function startQueue() {
-      let pool = state.learnOpts.starredOnly ? deck.words.filter((w) => w.starred) : deck.words.slice();
-      if (pool.length < 4) return [];
-      return shuffleArr(pool);
+    function buildPool() {
+      let pool = FS().chunkWords(FS().getDeck(deck.id));
+      if (state.learnOpts.starredOnly) pool = pool.filter((w) => w.starred);
+      return pool;
     }
-    let queue = startQueue();
-    let completed = new Set(); // ids answered correctly (progress)
-    let correct = 0;
-    let attempts = 0;          // total attempts including retries
-    let total = queue.length;
-    let cur = null;            // current word
+    function completedSet() {
+      return new Set(FS().getDeck(deck.id).progress.learn.completedIds || []);
+    }
+    function buildQueue() {
+      const pool = buildPool();
+      const done = completedSet();
+      return shuffleArr(pool.filter((w) => !done.has(w.id)));
+    }
+    let pool = buildPool();
+    let queue = buildQueue();
+    let cur = null;
     let answeredThis = false;
 
     function pickNext() {
@@ -491,65 +671,103 @@ window.FlashcardsView = (function () {
     pickNext();
 
     function makeChoices(word) {
-      const all = deck.words.filter((w) => w.id !== word.id);
+      const all = FS().getDeck(deck.id).words.filter((w) => w.id !== word.id);
       const distractors = shuffleArr(all).slice(0, 3);
-      const choices = shuffleArr([word, ...distractors]).map((w) => ({
+      return shuffleArr([word, ...distractors]).map((w) => ({
         text: backOf(w),
         correct: w.id === word.id
       }));
-      return choices;
     }
 
-    function draw() {
-      if (!total) {
-        root.innerHTML = `
-          <div class="qmeta">
-            <h2 style="margin:0;">🎯 ${escapeHtml(deck.name)}</h2>
-            <button class="btn ghost" id="back">← กลับ</button>
-          </div>
-          <div class="empty">ต้องมีอย่างน้อย 4 คำเพื่อใช้โหมดนี้ (ลองปิด "ดาวเท่านั้น")</div>
-        `;
-        root.querySelector("#back").addEventListener("click", goBack);
-        return;
-      }
-      if (!cur) {
-        root.innerHTML = `
-          <div class="score-card">
-            <div>
-              <h2 style="margin:0;">เรียนจบแล้ว!</h2>
-              <p class="subtle">${escapeHtml(deck.name)}</p>
-            </div>
-            <div class="score-num">${correct} / ${total}</div>
-          </div>
-          <div class="btn-row">
-            <button class="btn primary" id="restart">เริ่มใหม่</button>
-            <button class="btn ghost" id="back">กลับสู่ชุดคำ</button>
-          </div>
-        `;
-        root.querySelector("#restart").addEventListener("click", () => {
-          queue = startQueue(); total = queue.length;
-          completed = new Set(); correct = 0; attempts = 0;
-          pickNext(); draw();
+    function renderToolbar() {
+      return `
+        <div class="fc-toolbar fc-toolbar-sticky">
+          <label class="fc-toggle"><input type="checkbox" data-opt="swap" ${state.learnOpts.swap ? "checked" : ""}/> สลับด้าน</label>
+          <label class="fc-toggle"><input type="checkbox" data-opt="starredOnly" ${state.learnOpts.starredOnly ? "checked" : ""}/> ดาวเท่านั้น</label>
+        </div>
+      `;
+    }
+    function bindToolbar() {
+      root.querySelectorAll(".fc-toolbar input[data-opt]").forEach((cb) => {
+        cb.addEventListener("change", () => {
+          const opt = cb.dataset.opt;
+          state.learnOpts[opt] = cb.checked;
+          pool = buildPool();
+          queue = buildQueue();
+          pickNext();
+          draw();
         });
-        root.querySelector("#back").addEventListener("click", goBack);
-        return;
-      }
-
-      const pct = total ? Math.round((completed.size / total) * 100) : 0;
-      const choices = makeChoices(cur);
-
-      root.innerHTML = `
+      });
+    }
+    function renderHeader() {
+      return `
         <div class="qmeta">
           <h2 style="margin:0;">🎯 ${escapeHtml(deck.name)}</h2>
           <button class="btn ghost" id="back">← กลับ</button>
         </div>
+        <p class="subtle">${escapeHtml(chunkLabel(deck))}</p>
+      `;
+    }
+    function bindHeader() { root.querySelector("#back").addEventListener("click", goBack); }
 
-        <div class="fc-toolbar">
-          <label class="fc-toggle"><input type="checkbox" id="optSwap" ${state.learnOpts.swap ? "checked" : ""}/> สลับด้าน</label>
-          <label class="fc-toggle"><input type="checkbox" id="optStar" ${state.learnOpts.starredOnly ? "checked" : ""}/> ดาวเท่านั้น</label>
-        </div>
+    function draw() {
+      const dk = FS().getDeck(deck.id);
+      const total = pool.length;
+      const done = completedSet();
+      const doneInPool = pool.filter((w) => done.has(w.id)).length;
+      const pct = total ? Math.round((doneInPool / total) * 100) : 0;
+      const attempts = dk.progress.learn.attempts;
+      const correct = dk.progress.learn.correct;
 
-        <div class="qprog">${completed.size} / ${total} · ตอบไป ${attempts} ครั้ง · ถูก ${correct}</div>
+      // Not enough words
+      if (total < 4) {
+        root.innerHTML = `
+          ${renderHeader()}
+          ${renderToolbar()}
+          <div class="empty">ต้องมีอย่างน้อย 4 คำในชุดย่อย${state.learnOpts.starredOnly ? " (ลองปิด \"ดาวเท่านั้น\")" : ""}</div>
+        `;
+        bindHeader(); bindToolbar(); return;
+      }
+      // Finished
+      if (!cur) {
+        root.innerHTML = `
+          ${renderHeader()}
+          ${renderToolbar()}
+          <div class="qprog">${doneInPool} / ${total} · ตอบไป ${attempts} ครั้ง · ถูก ${correct}</div>
+          <div class="progress ok"><div class="bar" style="width:${pct}%"></div></div>
+          <div class="score-card">
+            <div>
+              <h2 style="margin:0;">เรียนจบแล้ว!</h2>
+              <p class="subtle">${escapeHtml(chunkLabel(deck))}</p>
+            </div>
+            <div class="score-num">${doneInPool} / ${total}</div>
+          </div>
+          <div class="btn-row">
+            <button class="btn primary" id="restart">เริ่มชุดย่อยนี้ใหม่</button>
+            <button class="btn ghost" id="back2">กลับสู่ชุดคำ</button>
+          </div>
+        `;
+        bindHeader(); bindToolbar();
+        root.querySelector("#restart").addEventListener("click", () => {
+          // Clear completed for words in current pool only
+          const ids = pool.map((w) => w.id);
+          const fullState = FS().load();
+          const d = fullState.decks.find((x) => x.id === deck.id);
+          if (d) {
+            d.progress.learn.completedIds = d.progress.learn.completedIds.filter((id) => !ids.includes(id));
+            FS().save(fullState);
+          }
+          queue = buildQueue(); pickNext(); draw();
+        });
+        root.querySelector("#back2").addEventListener("click", goBack);
+        return;
+      }
+
+      const choices = makeChoices(cur);
+      root.innerHTML = `
+        ${renderHeader()}
+        ${renderToolbar()}
+        <div class="qprog">${doneInPool} / ${total} · ตอบไป ${attempts} ครั้ง · ถูก ${correct}</div>
         <div class="progress"><div class="bar" style="width:${pct}%"></div></div>
 
         <div class="card">
@@ -569,20 +787,8 @@ window.FlashcardsView = (function () {
         </div>
       `;
 
-      root.querySelector("#back").addEventListener("click", goBack);
+      bindHeader(); bindToolbar();
       root.querySelector("#speakBtn").addEventListener("click", () => speak(frontOf(cur)));
-      root.querySelector("#optSwap").addEventListener("change", (e) => {
-        state.learnOpts.swap = e.target.checked;
-        queue = startQueue(); total = queue.length;
-        completed = new Set(); correct = 0; attempts = 0;
-        pickNext(); draw();
-      });
-      root.querySelector("#optStar").addEventListener("change", (e) => {
-        state.learnOpts.starredOnly = e.target.checked;
-        queue = startQueue(); total = queue.length;
-        completed = new Set(); correct = 0; attempts = 0;
-        pickNext(); draw();
-      });
 
       const choiceBtns = root.querySelectorAll(".choice");
       choiceBtns.forEach((btn) => {
@@ -596,23 +802,18 @@ window.FlashcardsView = (function () {
             else if (b === btn) b.classList.add("wrong");
           });
           const fb = root.querySelector("#fb");
-          attempts++;
+          FS().recordLearnAttempt(deck.id, cur.id, wasCorrect);
           if (wasCorrect) {
-            correct++;
-            completed.add(cur.id);
             fb.innerHTML = `<div class="feedback ok"><strong>ถูกต้อง ✓</strong></div>`;
           } else {
             fb.innerHTML = `<div class="feedback bad"><strong>ยังไม่ถูก ✗</strong>
               <div style="margin-top:4px;">เฉลย: ${escapeHtml(backOf(cur))}</div></div>`;
-            // wrong → push back in queue for retry
-            queue.push(cur);
+            queue.push(cur); // retry later
           }
           root.querySelector("#next").style.display = "inline-block";
         });
       });
-      root.querySelector("#next").addEventListener("click", () => {
-        pickNext(); draw();
-      });
+      root.querySelector("#next").addEventListener("click", () => { pickNext(); draw(); });
     }
 
     function goBack() {
@@ -624,6 +825,5 @@ window.FlashcardsView = (function () {
     return root;
   }
 
-  /* ===================== public ===================== */
   return { render };
 })();

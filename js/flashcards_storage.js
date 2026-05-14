@@ -1,5 +1,5 @@
 /**
- * Flashcards storage — folders, decks, words.
+ * Flashcards storage — folders, decks, words, progress.
  * Persisted to localStorage and (when signed in) mirrored to Firestore
  * via cloud_sync.js. Whole-document last-write-wins on top-level
  * `updatedAt`; concurrent edits across devices keep the newer device.
@@ -9,7 +9,13 @@
  *     folders: [{ id, name, createdAt }],
  *     decks: [{
  *       id, name, folderId|null, createdAt,
- *       words: [{ id, front, back, starred, createdAt }]
+ *       words: [{ id, front, back, starred, createdAt }],
+ *       chunkSize: number|null,     // null = no sub-sets
+ *       selectedChunk: number,      // 0-based index of the chunk in use
+ *       progress: {
+ *         cards: { seenIds: [wordId, ...] },
+ *         learn: { completedIds: [wordId, ...], attempts: n, correct: n }
+ *       }
  *     }],
  *     updatedAt: number
  *   }
@@ -21,13 +27,29 @@ window.FlashcardsStorage = (function () {
     return { folders: [], decks: [], updatedAt: 0 };
   }
 
+  function ensureDeckShape(d) {
+    if (typeof d.chunkSize === "undefined") d.chunkSize = null;
+    if (typeof d.selectedChunk !== "number" || d.selectedChunk < 0) d.selectedChunk = 0;
+    if (!d.progress || typeof d.progress !== "object") d.progress = {};
+    if (!d.progress.cards || typeof d.progress.cards !== "object") d.progress.cards = {};
+    if (!Array.isArray(d.progress.cards.seenIds)) d.progress.cards.seenIds = [];
+    if (!d.progress.learn || typeof d.progress.learn !== "object") d.progress.learn = {};
+    if (!Array.isArray(d.progress.learn.completedIds)) d.progress.learn.completedIds = [];
+    if (typeof d.progress.learn.attempts !== "number") d.progress.learn.attempts = 0;
+    if (typeof d.progress.learn.correct !== "number") d.progress.learn.correct = 0;
+    return d;
+  }
+
   function load() {
     try {
       const raw = JSON.parse(localStorage.getItem(KEY));
       if (!raw || typeof raw !== "object") return emptyState();
       raw.folders = Array.isArray(raw.folders) ? raw.folders : [];
       raw.decks = Array.isArray(raw.decks) ? raw.decks : [];
-      raw.decks.forEach((d) => { d.words = Array.isArray(d.words) ? d.words : []; });
+      raw.decks.forEach((d) => {
+        d.words = Array.isArray(d.words) ? d.words : [];
+        ensureDeckShape(d);
+      });
       raw.updatedAt = raw.updatedAt || 0;
       return raw;
     } catch (e) {
@@ -70,13 +92,13 @@ window.FlashcardsStorage = (function () {
   /* ---------- decks ---------- */
   function createDeck(name, folderId) {
     const state = load();
-    const d = {
+    const d = ensureDeckShape({
       id: uid("d"),
       name: String(name || "").trim() || "ชุดคำใหม่",
       folderId: folderId || null,
       createdAt: Date.now(),
       words: []
-    };
+    });
     state.decks.push(d);
     save(state);
     return d;
@@ -206,6 +228,83 @@ window.FlashcardsStorage = (function () {
     return { added };
   }
 
+  /* ---------- chunks ---------- */
+  function setChunkSize(deckId, size) {
+    const state = load();
+    const d = state.decks.find((x) => x.id === deckId);
+    if (!d) return;
+    const n = Number(size);
+    d.chunkSize = (n && n > 0) ? Math.floor(n) : null;
+    d.selectedChunk = 0;
+    save(state);
+  }
+  function setSelectedChunk(deckId, idx) {
+    const state = load();
+    const d = state.decks.find((x) => x.id === deckId);
+    if (!d) return;
+    d.selectedChunk = Math.max(0, Math.floor(Number(idx) || 0));
+    save(state);
+  }
+  function chunkCount(deck) {
+    if (!deck.chunkSize || !deck.words.length) return 1;
+    return Math.max(1, Math.ceil(deck.words.length / deck.chunkSize));
+  }
+  function chunkWords(deck) {
+    if (!deck.chunkSize) return deck.words.slice();
+    const size = deck.chunkSize;
+    const total = chunkCount(deck);
+    const idx = Math.min(Math.max(0, deck.selectedChunk || 0), total - 1);
+    return deck.words.slice(idx * size, idx * size + size);
+  }
+  function chunkRange(deck) {
+    if (!deck.chunkSize) return { from: 1, to: deck.words.length };
+    const size = deck.chunkSize;
+    const total = chunkCount(deck);
+    const idx = Math.min(Math.max(0, deck.selectedChunk || 0), total - 1);
+    const from = idx * size + 1;
+    const to = Math.min(deck.words.length, (idx + 1) * size);
+    return { from, to };
+  }
+
+  /* ---------- progress ---------- */
+  function markCardSeen(deckId, wordId) {
+    const state = load();
+    const d = state.decks.find((x) => x.id === deckId);
+    if (!d) return;
+    ensureDeckShape(d);
+    if (!d.progress.cards.seenIds.includes(wordId)) {
+      d.progress.cards.seenIds.push(wordId);
+      save(state);
+    }
+  }
+  function recordLearnAttempt(deckId, wordId, isCorrect) {
+    const state = load();
+    const d = state.decks.find((x) => x.id === deckId);
+    if (!d) return;
+    ensureDeckShape(d);
+    d.progress.learn.attempts++;
+    if (isCorrect) {
+      d.progress.learn.correct++;
+      if (!d.progress.learn.completedIds.includes(wordId)) {
+        d.progress.learn.completedIds.push(wordId);
+      }
+    }
+    save(state);
+  }
+  function clearProgress(deckId, mode) {
+    const state = load();
+    const d = state.decks.find((x) => x.id === deckId);
+    if (!d) return;
+    ensureDeckShape(d);
+    if (mode === "cards" || mode === "all") {
+      d.progress.cards = { seenIds: [] };
+    }
+    if (mode === "learn" || mode === "all") {
+      d.progress.learn = { completedIds: [], attempts: 0, correct: 0 };
+    }
+    save(state);
+  }
+
   /* ---------- queries ---------- */
   function getDeck(id) { return load().decks.find((d) => d.id === id) || null; }
   function getFolder(id) { return load().folders.find((f) => f.id === id) || null; }
@@ -230,6 +329,8 @@ window.FlashcardsStorage = (function () {
     createFolder, renameFolder, deleteFolder,
     createDeck, renameDeck, moveDeck, deleteDeck,
     addWord, updateWord, deleteWord, toggleStar,
+    setChunkSize, setSelectedChunk, chunkCount, chunkWords, chunkRange,
+    markCardSeen, recordLearnAttempt, clearProgress,
     parseCSV, importCSV,
     getDeck, getFolder,
     getForCloud, setFromCloud, mergeForCloud
