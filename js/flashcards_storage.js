@@ -33,8 +33,14 @@ window.FlashcardsStorage = (function () {
     if (!d.progress || typeof d.progress !== "object") d.progress = {};
     if (!d.progress.cards || typeof d.progress.cards !== "object") d.progress.cards = {};
     if (!Array.isArray(d.progress.cards.seenIds)) d.progress.cards.seenIds = [];
+    if (!Array.isArray(d.progress.cards.queueIds)) d.progress.cards.queueIds = [];
+    if (!Array.isArray(d.progress.cards.wrongIds)) d.progress.cards.wrongIds = [];
+    if (typeof d.progress.cards.roundTotal !== "number") d.progress.cards.roundTotal = 0;
     if (!d.progress.learn || typeof d.progress.learn !== "object") d.progress.learn = {};
     if (!Array.isArray(d.progress.learn.completedIds)) d.progress.learn.completedIds = [];
+    if (!Array.isArray(d.progress.learn.queueIds)) d.progress.learn.queueIds = [];
+    if (!Array.isArray(d.progress.learn.wrongIds)) d.progress.learn.wrongIds = [];
+    if (typeof d.progress.learn.roundTotal !== "number") d.progress.learn.roundTotal = 0;
     if (typeof d.progress.learn.attempts !== "number") d.progress.learn.attempts = 0;
     if (typeof d.progress.learn.correct !== "number") d.progress.learn.correct = 0;
     return d;
@@ -229,6 +235,15 @@ window.FlashcardsStorage = (function () {
   }
 
   /* ---------- chunks ---------- */
+  function clearRounds(d) {
+    ensureDeckShape(d);
+    d.progress.cards.queueIds = [];
+    d.progress.cards.wrongIds = [];
+    d.progress.cards.roundTotal = 0;
+    d.progress.learn.queueIds = [];
+    d.progress.learn.wrongIds = [];
+    d.progress.learn.roundTotal = 0;
+  }
   function setChunkSize(deckId, size) {
     const state = load();
     const d = state.decks.find((x) => x.id === deckId);
@@ -236,6 +251,7 @@ window.FlashcardsStorage = (function () {
     const n = Number(size);
     d.chunkSize = (n && n > 0) ? Math.floor(n) : null;
     d.selectedChunk = 0;
+    clearRounds(d);
     save(state);
   }
   function setSelectedChunk(deckId, idx) {
@@ -243,6 +259,7 @@ window.FlashcardsStorage = (function () {
     const d = state.decks.find((x) => x.id === deckId);
     if (!d) return;
     d.selectedChunk = Math.max(0, Math.floor(Number(idx) || 0));
+    clearRounds(d);
     save(state);
   }
   function chunkCount(deck) {
@@ -297,11 +314,31 @@ window.FlashcardsStorage = (function () {
     if (!d) return;
     ensureDeckShape(d);
     if (mode === "cards" || mode === "all") {
-      d.progress.cards = { seenIds: [] };
+      d.progress.cards = { seenIds: [], queueIds: [], wrongIds: [], roundTotal: 0 };
     }
     if (mode === "learn" || mode === "all") {
-      d.progress.learn = { completedIds: [], attempts: 0, correct: 0 };
+      d.progress.learn = { completedIds: [], queueIds: [], wrongIds: [], roundTotal: 0, attempts: 0, correct: 0 };
     }
+    save(state);
+  }
+  function setCardsRound(deckId, partial) {
+    const state = load();
+    const d = state.decks.find((x) => x.id === deckId);
+    if (!d) return;
+    ensureDeckShape(d);
+    if ("queueIds" in partial) d.progress.cards.queueIds = partial.queueIds.slice();
+    if ("wrongIds" in partial) d.progress.cards.wrongIds = partial.wrongIds.slice();
+    if ("roundTotal" in partial) d.progress.cards.roundTotal = partial.roundTotal;
+    save(state);
+  }
+  function setLearnRound(deckId, partial) {
+    const state = load();
+    const d = state.decks.find((x) => x.id === deckId);
+    if (!d) return;
+    ensureDeckShape(d);
+    if ("queueIds" in partial) d.progress.learn.queueIds = partial.queueIds.slice();
+    if ("wrongIds" in partial) d.progress.learn.wrongIds = partial.wrongIds.slice();
+    if ("roundTotal" in partial) d.progress.learn.roundTotal = partial.roundTotal;
     save(state);
   }
 
@@ -331,6 +368,7 @@ window.FlashcardsStorage = (function () {
     addWord, updateWord, deleteWord, toggleStar,
     setChunkSize, setSelectedChunk, chunkCount, chunkWords, chunkRange,
     markCardSeen, recordLearnAttempt, clearProgress,
+    setCardsRound, setLearnRound,
     parseCSV, importCSV,
     getDeck, getFolder,
     getForCloud, setFromCloud, mergeForCloud

@@ -247,6 +247,8 @@ window.FlashcardsView = (function () {
       const doneInPool = learnProgressInPool();
       const pctC = poolSize ? Math.round((seenInPool / poolSize) * 100) : 0;
       const pctL = poolSize ? Math.round((doneInPool / poolSize) * 100) : 0;
+      const cardsInFlight = (deck.progress.cards.queueIds || []).length + (deck.progress.cards.wrongIds || []).length;
+      const learnInFlight = (deck.progress.learn.queueIds || []).length + (deck.progress.learn.wrongIds || []).length;
 
       const chunkOpts = [25, 50, 100].map((n) =>
         `<option value="${n}" ${deck.chunkSize === n ? "selected" : ""}>${n} คำ/ชุด</option>`
@@ -292,8 +294,8 @@ window.FlashcardsView = (function () {
               <div class="progress"><div class="bar" style="width:${pctC}%"></div></div>
             </div>
             <div class="btn-row" style="margin:0;">
-              <button class="btn primary" id="goCards">${seenInPool > 0 && seenInPool < poolSize ? "ทำต่อ" : "เริ่ม"}</button>
-              <button class="btn ghost" id="resetCards" ${seenInPool === 0 ? "disabled" : ""}>รีเซ็ต</button>
+              <button class="btn primary" id="goCards">${cardsInFlight > 0 || (seenInPool > 0 && seenInPool < poolSize) ? "ทำต่อ" : "เริ่ม"}</button>
+              <button class="btn ghost" id="resetCards" ${seenInPool === 0 && cardsInFlight === 0 ? "disabled" : ""}>รีเซ็ต</button>
             </div>
           </div>
           <hr style="border:none; border-top:1px solid var(--line); margin:14px 0;" />
@@ -304,8 +306,8 @@ window.FlashcardsView = (function () {
               <div class="progress"><div class="bar" style="width:${pctL}%"></div></div>
             </div>
             <div class="btn-row" style="margin:0;">
-              <button class="btn primary" id="goLearn">${doneInPool > 0 && doneInPool < poolSize ? "ทำต่อ" : "เริ่ม"}</button>
-              <button class="btn ghost" id="resetLearn" ${doneInPool === 0 && deck.progress.learn.attempts === 0 ? "disabled" : ""}>รีเซ็ต</button>
+              <button class="btn primary" id="goLearn">${learnInFlight > 0 || (doneInPool > 0 && doneInPool < poolSize) ? "ทำต่อ" : "เริ่ม"}</button>
+              <button class="btn ghost" id="resetLearn" ${doneInPool === 0 && deck.progress.learn.attempts === 0 && learnInFlight === 0 ? "disabled" : ""}>รีเซ็ต</button>
             </div>
           </div>
         </div>
@@ -460,12 +462,15 @@ window.FlashcardsView = (function () {
   }
 
   /* ===================== FLASH CARDS MODE =====================
-   * Round-based study with swipe gestures (Tinder-style):
-   *   - swipe right / "ผ่าน"  → markCardSeen (persisted) + advance
-   *   - swipe left  / "ยังไม่ได้" → kept in roundUnknown, advance
-   * When the round queue empties, the next round contains only the
-   * roundUnknown words; the progress bar resets to their count.
-   * Loop until roundUnknown is empty.
+   * Round-based study with swipe gestures (Tinder-style).
+   * Queue state (queueIds + wrongIds + roundTotal) is persisted to
+   * storage so leaving mid-round and re-entering resumes exactly
+   * where the user left off — including the "to retry" pile.
+   *   - swipe right / "ผ่าน"      → markCardSeen, shift from queueIds
+   *   - swipe left  / "ยังไม่ได้" → move from queueIds to wrongIds
+   * When queueIds empties, wrongIds becomes the next round's queue.
+   * Pool changes (chunk / starredOnly / shuffle) explicitly reset
+   * the round; word deletions are reconciled on entry by filtering.
    */
   function renderCards() {
     const deck = FS().getDeck(state.deckId);
@@ -478,35 +483,54 @@ window.FlashcardsView = (function () {
       if (state.cardsOpts.starredOnly) pool = pool.filter((w) => w.starred);
       return pool;
     }
-    function unfinishedPool() {
-      const seen = new Set((FS().getDeck(deck.id).progress.cards.seenIds) || []);
-      return buildPool().filter((w) => !seen.has(w.id));
+    function poolIdSet() { return new Set(buildPool().map((w) => w.id)); }
+    function wordById(wid) {
+      const d = FS().getDeck(deck.id);
+      return d.words.find((w) => w.id === wid) || null;
     }
-    function buildRoundQueue() {
-      const q = unfinishedPool();
-      return state.cardsOpts.shuffle ? shuffleArr(q) : q;
+    function unfinishedIds() {
+      const seen = new Set((FS().getDeck(deck.id).progress.cards.seenIds) || []);
+      return buildPool().filter((w) => !seen.has(w.id)).map((w) => w.id);
     }
 
-    let pool = buildPool();
-    let roundQueue = buildRoundQueue();
-    let roundUnknown = [];
-    let roundSize = roundQueue.length;
-    let i = 0;
+    function loadRound() {
+      const d = FS().getDeck(deck.id);
+      const seen = new Set(d.progress.cards.seenIds || []);
+      const poolIds = poolIdSet();
+      let q = (d.progress.cards.queueIds || []).filter((id) => poolIds.has(id) && !seen.has(id));
+      let w = (d.progress.cards.wrongIds || []).filter((id) => poolIds.has(id) && !seen.has(id));
+      let total = d.progress.cards.roundTotal || 0;
+      if (q.length === 0 && w.length === 0) {
+        q = unfinishedIds();
+        if (state.cardsOpts.shuffle) q = shuffleArr(q);
+        total = q.length;
+        FS().setCardsRound(deck.id, { queueIds: q, wrongIds: [], roundTotal: total });
+      } else if (total < q.length + w.length) {
+        total = q.length + w.length;
+      }
+      return { queueIds: q, wrongIds: w, roundTotal: total };
+    }
+
+    let { queueIds, wrongIds, roundTotal } = loadRound();
     let flipped = false;
     let animating = false;
 
     function frontOf(w) { return state.cardsOpts.swap ? w.back : w.front; }
     function backOf(w)  { return state.cardsOpts.swap ? w.front : w.back; }
 
+    function persist() {
+      FS().setCardsRound(deck.id, { queueIds, wrongIds, roundTotal });
+    }
+
     function commit(action) {
-      if (animating) return;
-      const w = roundQueue[i];
-      if (!w) return;
-      if (action === "known") FS().markCardSeen(deck.id, w.id);
-      else roundUnknown.push(w);
-      i++;
+      const wid = queueIds[0];
+      if (!wid) { animating = false; return; }
+      if (action === "known") FS().markCardSeen(deck.id, wid);
+      else wrongIds.push(wid);
+      queueIds.shift();
       flipped = false;
       animating = false;
+      persist();
       draw();
     }
 
@@ -515,18 +539,31 @@ window.FlashcardsView = (function () {
       animating = true;
       const c = root.querySelector("#card");
       if (!c) { animating = false; then(); return; }
+      c.style.pointerEvents = "none";
       c.style.transition = "transform .22s ease, opacity .22s ease";
       c.style.transform = `translateX(${dir > 0 ? "120%" : "-120%"}) rotate(${dir > 0 ? 16 : -16}deg)`;
       c.style.opacity = "0";
-      setTimeout(() => { animating = false; then(); }, 200);
+      setTimeout(() => then(), 200);
+    }
+
+    function resetRound() {
+      queueIds = unfinishedIds();
+      if (state.cardsOpts.shuffle) queueIds = shuffleArr(queueIds);
+      wrongIds = [];
+      roundTotal = queueIds.length;
+      flipped = false;
+      animating = false;
+      persist();
+      draw();
     }
 
     function startNextRound() {
-      roundQueue = state.cardsOpts.shuffle ? shuffleArr(roundUnknown) : roundUnknown.slice();
-      roundUnknown = [];
-      roundSize = roundQueue.length;
-      i = 0;
+      queueIds = state.cardsOpts.shuffle ? shuffleArr(wrongIds) : wrongIds.slice();
+      wrongIds = [];
+      roundTotal = queueIds.length;
       flipped = false;
+      animating = false;
+      persist();
       draw();
     }
 
@@ -543,12 +580,12 @@ window.FlashcardsView = (function () {
       root.querySelectorAll(".fc-toolbar input[data-opt]").forEach((cb) => {
         cb.addEventListener("change", () => {
           state.cardsOpts[cb.dataset.opt] = cb.checked;
-          pool = buildPool();
-          roundQueue = buildRoundQueue();
-          roundUnknown = [];
-          roundSize = roundQueue.length;
-          i = 0; flipped = false;
-          draw();
+          const opt = cb.dataset.opt;
+          if (opt === "starredOnly" || opt === "shuffle") {
+            resetRound();
+          } else {
+            draw();
+          }
         });
       });
     }
@@ -564,6 +601,7 @@ window.FlashcardsView = (function () {
     function bindHeader() { root.querySelector("#back").addEventListener("click", goBack); }
 
     function draw() {
+      const pool = buildPool();
       const total = pool.length;
       const seen = new Set((FS().getDeck(deck.id).progress.cards.seenIds) || []);
       const seenInPool = pool.filter((w) => seen.has(w.id)).length;
@@ -581,8 +619,8 @@ window.FlashcardsView = (function () {
       }
 
       // No cards left in this round
-      if (i >= roundQueue.length) {
-        const allDone = roundUnknown.length === 0;
+      if (queueIds.length === 0) {
+        const allDone = wrongIds.length === 0;
         root.innerHTML = `
           ${renderHeader()}
           ${renderToolbar()}
@@ -593,14 +631,14 @@ window.FlashcardsView = (function () {
               <h2 style="margin:0;">${allDone ? "เก่งมาก! ตอบได้ครบทุกคำแล้ว" : "จบรอบนี้แล้ว"}</h2>
               <p class="subtle">${allDone
                 ? "ทบทวน " + total + " คำสำเร็จ"
-                : "ยังต้องทบทวนอีก " + roundUnknown.length + " คำ"}</p>
+                : "ยังต้องทบทวนอีก " + wrongIds.length + " คำ"}</p>
             </div>
-            <div class="score-num">${allDone ? "✓" : roundUnknown.length}</div>
+            <div class="score-num">${allDone ? "✓" : wrongIds.length}</div>
           </div>
           <div class="btn-row">
             ${allDone
               ? `<button class="btn primary" id="restartAll">เริ่มชุดย่อยนี้ใหม่</button>`
-              : `<button class="btn primary" id="nextRound">ทบทวนเฉพาะ ${roundUnknown.length} คำที่เหลือ →</button>`}
+              : `<button class="btn primary" id="nextRound">ทบทวนเฉพาะ ${wrongIds.length} คำที่เหลือ →</button>`}
             <button class="btn ghost" id="back2">กลับสู่ชุดคำ</button>
           </div>
         `;
@@ -614,27 +652,36 @@ window.FlashcardsView = (function () {
             const d = fullState.decks.find((x) => x.id === deck.id);
             if (d) {
               d.progress.cards.seenIds = d.progress.cards.seenIds.filter((id) => !ids.includes(id));
+              d.progress.cards.queueIds = [];
+              d.progress.cards.wrongIds = [];
+              d.progress.cards.roundTotal = 0;
               FS().save(fullState);
             }
-            pool = buildPool();
-            roundQueue = buildRoundQueue();
-            roundUnknown = [];
-            roundSize = roundQueue.length;
-            i = 0; flipped = false; draw();
+            ({ queueIds, wrongIds, roundTotal } = loadRound());
+            flipped = false;
+            animating = false;
+            draw();
           });
         }
         root.querySelector("#back2").addEventListener("click", goBack);
         return;
       }
 
-      const w = roundQueue[i];
+      const w = wordById(queueIds[0]);
+      if (!w) {
+        // Word was deleted while away — drop it and redraw
+        queueIds.shift();
+        persist();
+        return draw();
+      }
       const shownText = flipped ? backOf(w) : frontOf(w);
-      const roundPct = roundSize ? Math.round((i / roundSize) * 100) : 0;
+      const roundDone = Math.max(0, roundTotal - queueIds.length);
+      const roundPct = roundTotal ? Math.round((roundDone / roundTotal) * 100) : 0;
 
       root.innerHTML = `
         ${renderHeader()}
         ${renderToolbar()}
-        <div class="qprog">รอบนี้: ${i + 1} / ${roundSize} · รวม ${seenInPool} / ${total}${roundUnknown.length ? ` · เก็บไว้ทบทวน ${roundUnknown.length}` : ""}</div>
+        <div class="qprog">รอบนี้: ${roundDone + 1} / ${roundTotal} · รวม ${seenInPool} / ${total}${wrongIds.length ? ` · เก็บไว้ทบทวน ${wrongIds.length}` : ""}</div>
         <div class="progress"><div class="bar" style="width:${roundPct}%"></div></div>
 
         <div class="fc-flashcard ${flipped ? "is-flipped" : ""}" id="card" tabindex="0">
@@ -663,7 +710,9 @@ window.FlashcardsView = (function () {
       setupSwipe(root.querySelector("#card"));
 
       root.querySelector("#flipBtn").addEventListener("click", (e) => {
-        e.stopPropagation(); flipped = !flipped; draw();
+        e.stopPropagation();
+        if (animating) return;
+        flipped = !flipped; draw();
       });
       root.querySelector("#btnUnknown").addEventListener("click", () => {
         animateOut(-1, () => commit("unknown"));
@@ -673,7 +722,6 @@ window.FlashcardsView = (function () {
       });
       root.querySelector("#starBtn").addEventListener("click", () => {
         FS().toggleStar(deck.id, w.id);
-        w.starred = !w.starred;
         draw();
       });
       root.querySelector("#speakBtn").addEventListener("click", () => speak(shownText));
@@ -685,6 +733,9 @@ window.FlashcardsView = (function () {
       const THRESHOLD = 80;
 
       cardEl.addEventListener("pointerdown", (e) => {
+        // Block new gestures while a swipe-out animation is in flight,
+        // and ignore a second finger landing while the first is still down.
+        if (animating || dragging) return;
         if (e.target.closest("button")) return;
         dragging = true; moved = false;
         startX = e.clientX; startY = e.clientY;
@@ -710,26 +761,34 @@ window.FlashcardsView = (function () {
         if (!moved) {
           cardEl.style.transform = "";
           cardEl.classList.remove("hint-right", "hint-left");
+          if (animating) return;
           flipped = !flipped; draw();
+          return;
+        }
+        if (animating) {
+          cardEl.style.transform = "";
+          cardEl.classList.remove("hint-right", "hint-left");
           return;
         }
         if (dx > THRESHOLD) {
           animating = true;
+          cardEl.style.pointerEvents = "none";
           cardEl.style.transform = "translateX(120%) rotate(16deg)";
           cardEl.style.opacity = "0";
-          setTimeout(() => { animating = false; commit("known"); }, 200);
+          setTimeout(() => commit("known"), 200);
         } else if (dx < -THRESHOLD) {
           animating = true;
+          cardEl.style.pointerEvents = "none";
           cardEl.style.transform = "translateX(-120%) rotate(-16deg)";
           cardEl.style.opacity = "0";
-          setTimeout(() => { animating = false; commit("unknown"); }, 200);
+          setTimeout(() => commit("unknown"), 200);
         } else {
           cardEl.style.transform = "";
           cardEl.classList.remove("hint-right", "hint-left");
         }
       }
       cardEl.addEventListener("pointerup", release);
-      cardEl.addEventListener("pointercancel", (e) => {
+      cardEl.addEventListener("pointercancel", () => {
         if (!dragging) return;
         dragging = false;
         cardEl.style.transition = "transform .2s ease";
@@ -748,10 +807,11 @@ window.FlashcardsView = (function () {
   }
 
   /* ===================== LEARN MODE (4-choice) =====================
-   * Round-based MCQ. Wrong answers do NOT re-enter the current round;
-   * they are collected in roundWrong and become the next round, so the
-   * progress bar resets to the count of remaining wrongs. Correct
-   * answers persist to completedIds. Loop until roundWrong is empty.
+   * Round-based MCQ with persisted queue. Wrong answers go to
+   * wrongIds (next round's queue) instead of being re-pushed into
+   * the current queue, so the round progress bar can't exceed 100%.
+   * queueIds + wrongIds + roundTotal are saved to storage so leaving
+   * mid-round and returning resumes from the same position.
    */
   function renderLearn() {
     const deck = FS().getDeck(state.deckId);
@@ -767,34 +827,55 @@ window.FlashcardsView = (function () {
       if (state.learnOpts.starredOnly) pool = pool.filter((w) => w.starred);
       return pool;
     }
-    function unfinishedPool() {
-      const done = new Set(FS().getDeck(deck.id).progress.learn.completedIds || []);
-      return buildPool().filter((w) => !done.has(w.id));
+    function poolIdSet() { return new Set(buildPool().map((w) => w.id)); }
+    function wordById(wid) {
+      const d = FS().getDeck(deck.id);
+      return d.words.find((w) => w.id === wid) || null;
     }
-    function buildRoundQueue() {
-      return shuffleArr(unfinishedPool());
+    function unfinishedIds() {
+      const done = new Set(FS().getDeck(deck.id).progress.learn.completedIds || []);
+      return buildPool().filter((w) => !done.has(w.id)).map((w) => w.id);
     }
 
-    let pool = buildPool();
-    let roundQueue = buildRoundQueue();
-    let roundWrong = [];
-    let roundSize = roundQueue.length;
-    let roundAnswered = 0;
-    let cur = null;
+    function loadRound() {
+      const d = FS().getDeck(deck.id);
+      const done = new Set(d.progress.learn.completedIds || []);
+      const poolIds = poolIdSet();
+      let q = (d.progress.learn.queueIds || []).filter((id) => poolIds.has(id) && !done.has(id));
+      let w = (d.progress.learn.wrongIds || []).filter((id) => poolIds.has(id) && !done.has(id));
+      let total = d.progress.learn.roundTotal || 0;
+      if (q.length === 0 && w.length === 0) {
+        q = shuffleArr(unfinishedIds());
+        total = q.length;
+        FS().setLearnRound(deck.id, { queueIds: q, wrongIds: [], roundTotal: total });
+      } else if (total < q.length + w.length) {
+        total = q.length + w.length;
+      }
+      return { queueIds: q, wrongIds: w, roundTotal: total };
+    }
+
+    let { queueIds, wrongIds, roundTotal } = loadRound();
     let answeredThis = false;
 
-    function pickNext() {
-      cur = roundQueue.shift() || null;
-      answeredThis = false;
+    function persist() {
+      FS().setLearnRound(deck.id, { queueIds, wrongIds, roundTotal });
     }
-    pickNext();
+
+    function resetRound() {
+      queueIds = shuffleArr(unfinishedIds());
+      wrongIds = [];
+      roundTotal = queueIds.length;
+      answeredThis = false;
+      persist();
+      draw();
+    }
 
     function startNextRound() {
-      roundQueue = shuffleArr(roundWrong);
-      roundWrong = [];
-      roundSize = roundQueue.length;
-      roundAnswered = 0;
-      pickNext();
+      queueIds = shuffleArr(wrongIds);
+      wrongIds = [];
+      roundTotal = queueIds.length;
+      answeredThis = false;
+      persist();
       draw();
     }
 
@@ -819,12 +900,13 @@ window.FlashcardsView = (function () {
       root.querySelectorAll(".fc-toolbar input[data-opt]").forEach((cb) => {
         cb.addEventListener("change", () => {
           state.learnOpts[cb.dataset.opt] = cb.checked;
-          pool = buildPool();
-          roundQueue = buildRoundQueue();
-          roundWrong = [];
-          roundSize = roundQueue.length;
-          roundAnswered = 0;
-          pickNext(); draw();
+          const opt = cb.dataset.opt;
+          if (opt === "starredOnly") {
+            resetRound();
+          } else {
+            // swap — same question set, just front/back swapped
+            draw();
+          }
         });
       });
     }
@@ -841,6 +923,7 @@ window.FlashcardsView = (function () {
 
     function draw() {
       const dk = FS().getDeck(deck.id);
+      const pool = buildPool();
       const total = pool.length;
       const done = new Set(dk.progress.learn.completedIds || []);
       const doneInPool = pool.filter((w) => done.has(w.id)).length;
@@ -859,8 +942,8 @@ window.FlashcardsView = (function () {
       }
 
       // End of round / end of all
-      if (!cur) {
-        const allDone = roundWrong.length === 0;
+      if (queueIds.length === 0) {
+        const allDone = wrongIds.length === 0;
         root.innerHTML = `
           ${renderHeader()}
           ${renderToolbar()}
@@ -871,14 +954,14 @@ window.FlashcardsView = (function () {
               <h2 style="margin:0;">${allDone ? "เก่งมาก! ตอบได้ครบทุกคำแล้ว" : "จบรอบนี้แล้ว"}</h2>
               <p class="subtle">${allDone
                 ? "เรียน " + total + " คำสำเร็จ"
-                : "ยังต้องตอบใหม่อีก " + roundWrong.length + " คำ"}</p>
+                : "ยังต้องตอบใหม่อีก " + wrongIds.length + " คำ"}</p>
             </div>
-            <div class="score-num">${allDone ? "✓" : roundWrong.length}</div>
+            <div class="score-num">${allDone ? "✓" : wrongIds.length}</div>
           </div>
           <div class="btn-row">
             ${allDone
               ? `<button class="btn primary" id="restart">เริ่มชุดย่อยนี้ใหม่</button>`
-              : `<button class="btn primary" id="nextRound">ตอบใหม่เฉพาะ ${roundWrong.length} คำที่ผิด →</button>`}
+              : `<button class="btn primary" id="nextRound">ตอบใหม่เฉพาะ ${wrongIds.length} คำที่ผิด →</button>`}
             <button class="btn ghost" id="back2">กลับสู่ชุดคำ</button>
           </div>
         `;
@@ -892,27 +975,34 @@ window.FlashcardsView = (function () {
             const d = fullState.decks.find((x) => x.id === deck.id);
             if (d) {
               d.progress.learn.completedIds = d.progress.learn.completedIds.filter((id) => !ids.includes(id));
+              d.progress.learn.queueIds = [];
+              d.progress.learn.wrongIds = [];
+              d.progress.learn.roundTotal = 0;
               FS().save(fullState);
             }
-            pool = buildPool();
-            roundQueue = buildRoundQueue();
-            roundWrong = [];
-            roundSize = roundQueue.length;
-            roundAnswered = 0;
-            pickNext(); draw();
+            ({ queueIds, wrongIds, roundTotal } = loadRound());
+            answeredThis = false;
+            draw();
           });
         }
         root.querySelector("#back2").addEventListener("click", goBack);
         return;
       }
 
+      const cur = wordById(queueIds[0]);
+      if (!cur) {
+        queueIds.shift();
+        persist();
+        return draw();
+      }
       const choices = makeChoices(cur);
-      const roundPct = roundSize ? Math.round((roundAnswered / roundSize) * 100) : 0;
+      const roundDone = Math.max(0, roundTotal - queueIds.length);
+      const roundPct = roundTotal ? Math.round((roundDone / roundTotal) * 100) : 0;
 
       root.innerHTML = `
         ${renderHeader()}
         ${renderToolbar()}
-        <div class="qprog">รอบนี้: ${roundAnswered} / ${roundSize}${roundWrong.length ? ` · ผิด ${roundWrong.length}` : ""} · รวม ${doneInPool} / ${total}</div>
+        <div class="qprog">รอบนี้: ${roundDone} / ${roundTotal}${wrongIds.length ? ` · ผิด ${wrongIds.length}` : ""} · รวม ${doneInPool} / ${total}</div>
         <div class="progress"><div class="bar" style="width:${roundPct}%"></div></div>
 
         <div class="card">
@@ -933,6 +1023,7 @@ window.FlashcardsView = (function () {
       `;
 
       bindHeader(); bindToolbar();
+      answeredThis = false;
       root.querySelector("#speakBtn").addEventListener("click", () => speak(frontOf(cur)));
 
       const choiceBtns = root.querySelectorAll(".choice");
@@ -948,18 +1039,19 @@ window.FlashcardsView = (function () {
           });
           const fb = root.querySelector("#fb");
           FS().recordLearnAttempt(deck.id, cur.id, wasCorrect);
-          roundAnswered++;
           if (wasCorrect) {
             fb.innerHTML = `<div class="feedback ok"><strong>ถูกต้อง ✓</strong></div>`;
           } else {
             fb.innerHTML = `<div class="feedback bad"><strong>ยังไม่ถูก ✗</strong>
               <div style="margin-top:4px;">เฉลย: ${escapeHtml(backOf(cur))} — เก็บไว้ตอบใหม่ในรอบหน้า</div></div>`;
-            roundWrong.push(cur);
+            wrongIds.push(cur.id);
           }
+          queueIds.shift();
+          persist();
           root.querySelector("#next").style.display = "inline-block";
         });
       });
-      root.querySelector("#next").addEventListener("click", () => { pickNext(); draw(); });
+      root.querySelector("#next").addEventListener("click", () => { draw(); });
     }
 
     function goBack() {
