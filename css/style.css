@@ -28,6 +28,7 @@ body {
   padding: 16px 24px;
   background: #fff;
   border-bottom: 1px solid var(--line);
+  position: relative;
 }
 .brand { display:flex; align-items:center; gap:14px; }
 .logo {
@@ -46,6 +47,32 @@ body {
   min-height: 16px; min-width: 1px;
 }
 .sync-status.err { color: var(--bad); }
+.sync-status:empty { display: none; }
+
+/* On narrow screens topbar-right wraps; letting sync-status flow inside it
+ * means each status change ("กำลังบันทึก…" → "ซิงก์แล้ว ✓") nudges the
+ * other items onto a different row and the whole page jumps. Take it out
+ * of flex flow so the topbar height stays constant during sync.
+ */
+@media (max-width: 600px) {
+  .sync-status {
+    position: absolute;
+    top: 50%;
+    right: 14px;
+    transform: translateY(-50%);
+    font-size: 10px;
+    line-height: 1.3;
+    background: var(--bg);
+    padding: 1px 6px;
+    border-radius: 4px;
+    max-width: 120px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    pointer-events: none;
+    z-index: 2;
+  }
+}
 
 .google-btn {
   display: inline-flex; align-items: center; gap: 8px;
