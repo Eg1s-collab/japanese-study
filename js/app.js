@@ -67,6 +67,8 @@
     } else if (state.tab === "conjugation") {
       // Conjugation is not level-segmented (shared pool across all levels).
       node = window.ConjugationView.render();
+    } else if (state.tab === "flashcards") {
+      node = window.FlashcardsView.render();
     } else if (state.tab === "bookmarks") {
       node = window.BookmarksView.render();
     }

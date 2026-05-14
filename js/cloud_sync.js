@@ -43,6 +43,7 @@ const db = getFirestore(app);
 
 const BM_KEY = "jp_grammar_bookmarks_v1";
 const CJ_KEY = "jp_conjugation_progress_v1";
+const FC_KEY = "jp_flashcards_v1";
 
 let currentUser = null;
 let pushTimer = null;
@@ -128,6 +129,7 @@ async function pullAndMerge() {
 
     const localBm = JSON.parse(localStorage.getItem(BM_KEY) || "[]");
     const localCj = JSON.parse(localStorage.getItem(CJ_KEY) || "{}");
+    const localFc = JSON.parse(localStorage.getItem(FC_KEY) || "null");
 
     const mergedBm = mergeBookmarks(cloud ? cloud.bookmarks : [], localBm);
     let mergedCj = mergeConj(cloud ? cloud.conjugation : {}, localCj);
@@ -135,13 +137,23 @@ async function pullAndMerge() {
     if (window.ConjStorage && window.ConjStorage.migrate) {
       mergedCj = window.ConjStorage.migrate(mergedCj).data;
     }
+    // Flashcards: whole-doc last-write-wins by top-level updatedAt
+    const cloudFc = cloud && cloud.flashcards ? cloud.flashcards : null;
+    let mergedFc;
+    if (window.FlashcardsStorage && window.FlashcardsStorage.mergeForCloud) {
+      mergedFc = window.FlashcardsStorage.mergeForCloud(localFc, cloudFc);
+    } else {
+      mergedFc = (cloudFc && (!localFc || (cloudFc.updatedAt || 0) > (localFc.updatedAt || 0))) ? cloudFc : (localFc || { folders: [], decks: [], updatedAt: 0 });
+    }
 
     localStorage.setItem(BM_KEY, JSON.stringify(mergedBm));
     localStorage.setItem(CJ_KEY, JSON.stringify(mergedCj));
+    localStorage.setItem(FC_KEY, JSON.stringify(mergedFc));
 
     await setDoc(ref, {
       bookmarks: mergedBm,
       conjugation: mergedCj,
+      flashcards: mergedFc,
       updatedAt: serverTimestamp(),
       clientTs: Date.now()
     });
@@ -163,6 +175,7 @@ async function pushNow() {
     await setDoc(ref, {
       bookmarks: JSON.parse(localStorage.getItem(BM_KEY) || "[]"),
       conjugation: JSON.parse(localStorage.getItem(CJ_KEY) || "{}"),
+      flashcards: JSON.parse(localStorage.getItem(FC_KEY) || "null") || { folders: [], decks: [], updatedAt: 0 },
       updatedAt: serverTimestamp(),
       clientTs: Date.now()
     });
