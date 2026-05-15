@@ -283,17 +283,17 @@ window.N5_ADJECTIVES = [
 
 window.N5_FORM_LABELS = {
   // verbs
-  dict: "รูปดิก (普通形 plain)",
-  masu: "ます (สุภาพ ปัจจุบัน)",
-  masen: "ません (สุภาพ ปฏิเสธ)",
-  mashita: "ました (สุภาพ อดีต)",
-  te: "รูป て",
-  nai: "ない (plain ปฏิเสธ)",
-  ta: "た (plain อดีต)",
-  tai: "たい (อยากทำ)",
+  dict: "รูปดิก (普通形 plain) (N5)",
+  masu: "ます (สุภาพ ปัจจุบัน) (N5)",
+  masen: "ません (สุภาพ ปฏิเสธ) (N5)",
+  mashita: "ました (สุภาพ อดีต) (N5)",
+  te: "รูป て (N5)",
+  nai: "ない (plain ปฏิเสธ) (N5)",
+  ta: "た (plain อดีต) (N5)",
+  tai: "たい (อยากทำ) (N5)",
   // adjectives
-  neg: "ปฏิเสธ (plain)",
-  past: "อดีต (plain)",
-  "past-neg": "อดีตปฏิเสธ (plain)",
-  modify: "ขยายคำนาม (+な)"
+  neg: "ปฏิเสธ (plain) (N5)",
+  past: "อดีต (plain) (N5)",
+  "past-neg": "อดีตปฏิเสธ (plain) (N5)",
+  modify: "ขยายคำนาม (+な) (N5)"
 };

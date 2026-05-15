@@ -16,8 +16,15 @@ window.LEVELS = {
     verbs: window.N5_VERBS || [],
     adjectives: window.N5_ADJECTIVES || [],
     formLabels: window.N5_FORM_LABELS || {}
+  },
+  n4: {
+    id: "n4",
+    label: "N4 (กลาง)",
+    units: window.N4_UNITS || [],
+    verbs: window.N4_VERBS || [],
+    adjectives: window.N4_ADJECTIVES || [],
+    formLabels: window.N4_FORM_LABELS || {}
   }
-  // n4: { id:"n4", label:"N4", units: window.N4_UNITS, ... }
 };
 
-window.LEVEL_ORDER = ["n5"]; // append "n4", "n3" later
+window.LEVEL_ORDER = ["n5", "n4"]; // append "n3" later

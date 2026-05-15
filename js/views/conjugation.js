@@ -14,17 +14,33 @@ window.ConjugationView = (function () {
   const STORAGE_LEVEL = "all";
 
   // Aggregate verbs / adjectives / formLabels across all configured levels.
-  // First-occurrence wins on duplicates (keyed by dict / word).
+  // Duplicates (keyed by dict / word) MERGE their `forms` so later levels can
+  // contribute extra forms (e.g. N4 adds potential/volitional/ba/passive to
+  // verbs already introduced at N5).
   function aggregate() {
     const verbs = [], adjectives = [], formLabels = {};
-    const seenV = new Set(), seenA = new Set();
+    const vIdx = new Map(), aIdx = new Map();
     Object.keys(window.LEVELS || {}).forEach((id) => {
       const lv = window.LEVELS[id] || {};
       (lv.verbs || []).forEach((v) => {
-        if (v && v.dict && !seenV.has(v.dict)) { seenV.add(v.dict); verbs.push(v); }
+        if (!v || !v.dict) return;
+        if (vIdx.has(v.dict)) {
+          const ex = verbs[vIdx.get(v.dict)];
+          ex.forms = Object.assign({}, ex.forms || {}, v.forms || {});
+        } else {
+          vIdx.set(v.dict, verbs.length);
+          verbs.push(Object.assign({}, v, { forms: Object.assign({}, v.forms || {}) }));
+        }
       });
       (lv.adjectives || []).forEach((a) => {
-        if (a && a.word && !seenA.has(a.word)) { seenA.add(a.word); adjectives.push(a); }
+        if (!a || !a.word) return;
+        if (aIdx.has(a.word)) {
+          const ex = adjectives[aIdx.get(a.word)];
+          ex.forms = Object.assign({}, ex.forms || {}, a.forms || {});
+        } else {
+          aIdx.set(a.word, adjectives.length);
+          adjectives.push(Object.assign({}, a, { forms: Object.assign({}, a.forms || {}) }));
+        }
       });
       Object.assign(formLabels, lv.formLabels || {});
     });
@@ -35,9 +51,10 @@ window.ConjugationView = (function () {
     const data = aggregate();
     const root = document.createElement("div");
 
-    const verbForms = ["masu", "masen", "mashita", "te", "nai", "ta", "tai"];
-    const iAdjForms = ["neg", "past", "past-neg"];
-    const naAdjForms = ["neg", "past", "past-neg", "modify"];
+    const verbForms = ["masu", "masen", "mashita", "te", "nai", "ta", "tai",
+      "pot", "vol", "ba", "imp", "pass", "caus"];
+    const iAdjForms = ["neg", "past", "past-neg", "adv", "noun"];
+    const naAdjForms = ["neg", "past", "past-neg", "modify", "adv"];
 
     let mode = "verb"; // "verb" | "i-adj" | "na-adj"
     let target = "masu";
