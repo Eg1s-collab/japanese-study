@@ -514,6 +514,8 @@ window.FlashcardsView = (function () {
     let { queueIds, wrongIds, roundTotal } = loadRound();
     let flipped = false;
     let animating = false;
+    // In-memory undo stack — entries: { wid, action }. Lost on reload/back.
+    const history = [];
 
     function frontOf(w) { return state.cardsOpts.swap ? w.back : w.front; }
     function backOf(w)  { return state.cardsOpts.swap ? w.front : w.back; }
@@ -528,8 +530,28 @@ window.FlashcardsView = (function () {
       if (action === "known") FS().markCardSeen(deck.id, wid);
       else wrongIds.push(wid);
       queueIds.shift();
+      history.push({ wid, action });
       flipped = false;
       animating = false;
+      persist();
+      draw();
+    }
+
+    function undo() {
+      if (animating) return;
+      const last = history.pop();
+      if (!last) return;
+      if (last.action === "known") {
+        FS().unmarkCardSeen(deck.id, last.wid);
+      } else {
+        const idx = wrongIds.lastIndexOf(last.wid);
+        if (idx >= 0) wrongIds.splice(idx, 1);
+      }
+      queueIds.unshift(last.wid);
+      if (roundTotal < queueIds.length + wrongIds.length) {
+        roundTotal = queueIds.length + wrongIds.length;
+      }
+      flipped = false;
       persist();
       draw();
     }
@@ -553,6 +575,7 @@ window.FlashcardsView = (function () {
       roundTotal = queueIds.length;
       flipped = false;
       animating = false;
+      history.length = 0;
       persist();
       draw();
     }
@@ -563,6 +586,7 @@ window.FlashcardsView = (function () {
       roundTotal = queueIds.length;
       flipped = false;
       animating = false;
+      history.length = 0;
       persist();
       draw();
     }
@@ -639,10 +663,13 @@ window.FlashcardsView = (function () {
             ${allDone
               ? `<button class="btn primary" id="restartAll">เริ่มชุดย่อยนี้ใหม่</button>`
               : `<button class="btn primary" id="nextRound">ทบทวนเฉพาะ ${wrongIds.length} คำที่เหลือ →</button>`}
+            ${history.length ? `<button class="btn" id="undoEnd">↶ ย้อนกลับ</button>` : ""}
             <button class="btn ghost" id="back2">กลับสู่ชุดคำ</button>
           </div>
         `;
         bindHeader(); bindToolbar();
+        const undoEndBtn = root.querySelector("#undoEnd");
+        if (undoEndBtn) undoEndBtn.addEventListener("click", undo);
         if (!allDone) {
           root.querySelector("#nextRound").addEventListener("click", startNextRound);
         } else {
@@ -698,6 +725,7 @@ window.FlashcardsView = (function () {
         <div class="btn-row" style="justify-content:space-between;">
           <button class="btn fc-btn-unknown" id="btnUnknown">← ยังไม่ได้</button>
           <div class="btn-row" style="margin:0;">
+            <button class="btn" id="undoBtn" title="ย้อนกลับการ์ดที่แล้ว" ${history.length ? "" : "disabled"}>↶ ย้อนกลับ</button>
             <button class="star ${w.starred ? "on" : ""}" id="starBtn" title="ติดดาว">★</button>
             <button class="btn" id="speakBtn" title="ออกเสียง">🔊</button>
             <button class="btn" id="flipBtn">พลิก</button>
@@ -720,6 +748,7 @@ window.FlashcardsView = (function () {
       root.querySelector("#btnKnown").addEventListener("click", () => {
         animateOut(1, () => commit("known"));
       });
+      root.querySelector("#undoBtn").addEventListener("click", undo);
       root.querySelector("#starBtn").addEventListener("click", () => {
         FS().toggleStar(deck.id, w.id);
         draw();
@@ -856,9 +885,13 @@ window.FlashcardsView = (function () {
 
     let { queueIds, wrongIds, roundTotal } = loadRound();
     let answeredThis = false;
+    let autoAdvanceTimer = null;
 
     function persist() {
       FS().setLearnRound(deck.id, { queueIds, wrongIds, roundTotal });
+    }
+    function clearAutoAdvance() {
+      if (autoAdvanceTimer) { clearTimeout(autoAdvanceTimer); autoAdvanceTimer = null; }
     }
 
     function resetRound() {
@@ -879,10 +912,88 @@ window.FlashcardsView = (function () {
       draw();
     }
 
+    function tokenize(s) {
+      return String(s || "")
+        .toLowerCase()
+        .split(/[,、，;；/]\s*|\s+/)
+        .map((t) => t.trim())
+        .filter(Boolean);
+    }
+    function jpChars(s) {
+      return String(s || "").replace(/[()（）\s]/g, "");
+    }
+    function similarity(a, b) {
+      if (!a || !b || a === b) return 0;
+      if (hasJapanese(a) || hasJapanese(b)) {
+        const ca = jpChars(a), cb = jpChars(b);
+        if (!ca.length || !cb.length) return 0;
+        let common = 0;
+        const setA = new Set(ca);
+        for (const ch of cb) if (setA.has(ch)) common++;
+        const union = new Set([...ca, ...cb]).size || 1;
+        const lenPenalty = Math.abs(ca.length - cb.length) <= 1 ? 0.15 : 0;
+        return common / union + lenPenalty;
+      }
+      const ta = new Set(tokenize(a));
+      const tb = new Set(tokenize(b));
+      if (!ta.size || !tb.size) return 0;
+      let inter = 0;
+      ta.forEach((t) => { if (tb.has(t)) inter++; });
+      const union = new Set([...ta, ...tb]).size;
+      return union ? inter / union : 0;
+    }
+
+    // True when `a` and `b` mean essentially the same thing:
+    // identical text, identical Japanese char set, or one Thai token
+    // set is a subset of the other (e.g. "ปีศาจ, ซาตาน" vs "ซาตาน, ปีศาจ"
+    // or "ปีศาจ, ซาตาน" vs "ปีศาจ"). Used to keep duplicate-meaning
+    // options out of the choice set so distractors are similar but distinct.
+    function isDuplicateMeaning(a, b) {
+      if (!a || !b) return false;
+      if (a === b) return true;
+      if (hasJapanese(a) && hasJapanese(b)) {
+        return jpChars(a) === jpChars(b);
+      }
+      const ta = new Set(tokenize(a));
+      const tb = new Set(tokenize(b));
+      if (!ta.size || !tb.size) return false;
+      const aInB = [...ta].every((t) => tb.has(t));
+      const bInA = [...tb].every((t) => ta.has(t));
+      return aInB || bInA;
+    }
+
     function makeChoices(word) {
       const all = FS().getDeck(deck.id).words.filter((w) => w.id !== word.id);
-      const distractors = shuffleArr(all).slice(0, 3);
-      return shuffleArr([word, ...distractors]).map((w) => ({
+      const targetAns = backOf(word);
+      // Hard-exclude options whose back means the same as the correct answer.
+      const eligible = all.filter((w) => !isDuplicateMeaning(backOf(w), targetAns));
+      // Rank by similarity, then dedupe by displayed text so we never show
+      // two distractors that read the same.
+      const scored = eligible.map((w) => ({ w, score: similarity(backOf(w), targetAns) }));
+      scored.sort((a, b) => b.score - a.score);
+      const seenBacks = new Set([targetAns]);
+      const candidates = [];
+      for (const s of scored) {
+        const ans = backOf(s.w);
+        if (seenBacks.has(ans)) continue;
+        seenBacks.add(ans);
+        candidates.push(s);
+        if (candidates.length >= 10) break;
+      }
+      const nonZero = candidates.filter((x) => x.score > 0);
+      const basis = nonZero.length >= 3 ? nonZero : candidates;
+      const picked = shuffleArr(basis).slice(0, 3).map((x) => x.w);
+      // Pad with random eligible (still dedup by back text) if too few.
+      if (picked.length < 3) {
+        const pickedIds = new Set(picked.map((w) => w.id));
+        const pool = shuffleArr(eligible).filter((w) => !pickedIds.has(w.id) && !seenBacks.has(backOf(w)));
+        for (const w of pool) {
+          if (picked.length >= 3) break;
+          picked.push(w);
+          seenBacks.add(backOf(w));
+        }
+      }
+      return shuffleArr([word, ...picked]).map((w) => ({
         text: backOf(w),
         correct: w.id === word.id
       }));
@@ -1024,9 +1135,15 @@ window.FlashcardsView = (function () {
 
       bindHeader(); bindToolbar();
       answeredThis = false;
+      clearAutoAdvance();
       root.querySelector("#speakBtn").addEventListener("click", () => speak(frontOf(cur)));
 
       const choiceBtns = root.querySelectorAll(".choice");
+      const nextBtn = root.querySelector("#next");
+      function advance() {
+        clearAutoAdvance();
+        draw();
+      }
       choiceBtns.forEach((btn) => {
         btn.addEventListener("click", () => {
           if (answeredThis) return;
@@ -1048,13 +1165,15 @@ window.FlashcardsView = (function () {
           }
           queueIds.shift();
           persist();
-          root.querySelector("#next").style.display = "inline-block";
+          nextBtn.style.display = "inline-block";
+          autoAdvanceTimer = setTimeout(advance, wasCorrect ? 700 : 1800);
         });
       });
-      root.querySelector("#next").addEventListener("click", () => { draw(); });
+      nextBtn.addEventListener("click", advance);
     }
 
     function goBack() {
+      clearAutoAdvance();
       window.speechSynthesis && window.speechSynthesis.cancel();
       state.screen = "deck"; refresh(root);
     }

@@ -294,6 +294,15 @@ window.FlashcardsStorage = (function () {
       save(state);
     }
   }
+  function unmarkCardSeen(deckId, wordId) {
+    const state = load();
+    const d = state.decks.find((x) => x.id === deckId);
+    if (!d) return;
+    ensureDeckShape(d);
+    const before = d.progress.cards.seenIds.length;
+    d.progress.cards.seenIds = d.progress.cards.seenIds.filter((id) => id !== wordId);
+    if (d.progress.cards.seenIds.length !== before) save(state);
+  }
   function recordLearnAttempt(deckId, wordId, isCorrect) {
     const state = load();
     const d = state.decks.find((x) => x.id === deckId);
@@ -367,7 +376,7 @@ window.FlashcardsStorage = (function () {
     createDeck, renameDeck, moveDeck, deleteDeck,
     addWord, updateWord, deleteWord, toggleStar,
     setChunkSize, setSelectedChunk, chunkCount, chunkWords, chunkRange,
-    markCardSeen, recordLearnAttempt, clearProgress,
+    markCardSeen, unmarkCardSeen, recordLearnAttempt, clearProgress,
     setCardsRound, setLearnRound,
     parseCSV, importCSV,
     getDeck, getFolder,
