@@ -718,6 +718,83 @@ h3 { margin: 0 0 6px; font-size: 16px; }
 
 .empty { text-align:center; color: var(--muted); padding: 30px 10px; }
 
+/* ---------- Daily exercise card ---------- */
+.daily-card {
+  border: 1px solid var(--accent-border);
+  background: linear-gradient(135deg, var(--accent-softer), var(--card));
+  box-shadow:
+    0 6px 20px var(--accent-glow),
+    inset 0 1px 0 var(--glass-highlight);
+}
+.daily-head {
+  display: flex; gap: 12px; align-items: flex-start; justify-content: space-between;
+  flex-wrap: wrap;
+}
+.daily-title {
+  margin: 0; font-size: 17px;
+  background: linear-gradient(135deg, var(--accent-strong), var(--accent-deep));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.daily-meta { margin: 4px 0 0 0; font-size: 12px; }
+.daily-status {
+  margin: 12px 0 14px 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--line);
+  font-size: 14px; color: var(--ink);
+}
+.daily-controls { margin-bottom: 0; }
+.daily-controls .inline-field {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  padding: 4px 10px 4px 12px;
+  border-radius: 10px;
+  font-size: 13px; color: var(--muted);
+}
+.daily-controls .inline-field input[type=number] {
+  width: 64px;
+  padding: 6px 8px;
+  margin-left: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--ink);
+  font-size: 14px;
+  font-family: inherit;
+  -moz-appearance: textfield;
+}
+.daily-controls .inline-field input[type=number]::-webkit-outer-spin-button,
+.daily-controls .inline-field input[type=number]::-webkit-inner-spin-button {
+  -webkit-appearance: none; margin: 0;
+}
+.daily-pill {
+  display: inline-block;
+  padding: 2px 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.daily-pill.bad { background: var(--bad-soft); color: var(--bad); border: 1px solid rgba(255,138,138,.35); }
+.daily-pill.warn { background: var(--warn-soft); color: var(--warn); border: 1px solid rgba(251,191,36,.35); }
+.daily-pill.ok { background: var(--ok-soft); color: var(--ok); border: 1px solid rgba(110,231,160,.35); }
+
+.qhead {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 8px;
+}
+.qtitle { margin: 0; font-size: 18px; }
+.qsub { color: var(--accent); font-weight: 600; }
+.qmeta-right { display: inline-flex; align-items: center; gap: 8px; }
+.btn-sm { padding: 6px 10px; font-size: 12px; }
+
+@media (max-width: 600px) {
+  .daily-controls .inline-field { width: 100%; justify-content: space-between; }
+  .daily-controls .btn { flex: 1 1 auto; }
+}
+
 .foot {
   text-align: center; color: var(--muted);
   font-size: 12px;
