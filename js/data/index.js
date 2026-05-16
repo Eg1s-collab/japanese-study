@@ -24,7 +24,16 @@ window.LEVELS = {
     verbs: window.N4_VERBS || [],
     adjectives: window.N4_ADJECTIVES || [],
     formLabels: window.N4_FORM_LABELS || {}
+  },
+  n3: {
+    id: "n3",
+    label: "N3 (กลาง-สูง)",
+    units: window.N3_UNITS || [],
+    verbs: window.N3_VERBS || [],
+    adjectives: window.N3_ADJECTIVES || [],
+    formLabels: window.N3_FORM_LABELS || {},
+    playlistUrl: window.N3_PLAYLIST_URL || ""
   }
 };
 
-window.LEVEL_ORDER = ["n5", "n4"]; // append "n3" later
+window.LEVEL_ORDER = ["n5", "n4", "n3"];

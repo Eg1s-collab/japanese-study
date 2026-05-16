@@ -44,12 +44,15 @@ window.UnitsView = (function () {
     const unit = lv.units.find((u) => u.id === unitId);
     if (!unit) return document.createTextNode("ไม่พบ unit");
 
+    const playlistUrl = unit.playlistUrl || lv.playlistUrl || "";
+
     const points = unit.points
       .map(
         (p) => `
       <div class="point">
         <div class="pat">${escapeHtml(p.pattern)}</div>
-        <div class="desc">${escapeHtml(p.desc)}</div>
+        <div class="desc">${formatDesc(p.desc)}</div>
+        ${p.videoTopic ? videoLinkHtml(p.videoTopic, playlistUrl) : ""}
         ${(p.examples || [])
           .map(
             (ex) => `
@@ -72,6 +75,7 @@ window.UnitsView = (function () {
       <div class="btn-row">
         <button class="btn ghost" id="backBtn">← กลับไปรายการ</button>
         <button class="btn primary" id="quizBtn">เริ่มทำแบบฝึกหัดของ unit นี้</button>
+        ${playlistUrl ? `<a class="btn ghost video-btn" href="${escapeAttr(playlistUrl)}" target="_blank" rel="noopener">▶ ดู Playlist ทั้งหมด</a>` : ""}
         ${dismissed ? `<button class="btn ghost" id="unhideBtn">↺ ยกเลิกการซ่อน</button>` : ""}
       </div>
       <div class="card">
@@ -100,6 +104,24 @@ window.UnitsView = (function () {
       '"': "&quot;",
       "'": "&#39;"
     }[c]));
+  }
+
+  function escapeAttr(s) {
+    return escapeHtml(s);
+  }
+
+  // คงการขึ้นบรรทัดใหม่ใน desc + รองรับ bullet "•"
+  function formatDesc(s) {
+    return escapeHtml(s || "").replace(/\n/g, "<br>");
+  }
+
+  function videoLinkHtml(topic, playlistUrl) {
+    // เปิด YouTube search ในเพลย์ลิสต์เดียวกัน (ผ่าน search_query ทั่วไป)
+    const q = encodeURIComponent("JLPT N3 " + topic);
+    const searchUrl = "https://www.youtube.com/results?search_query=" + q;
+    return `<div class="vid-row">
+      <a class="vid-link" href="${escapeAttr(searchUrl)}" target="_blank" rel="noopener">▶ ค้นวิดีโอ "${escapeHtml(topic)}"</a>
+    </div>`;
   }
 
   return { renderList, renderUnit };

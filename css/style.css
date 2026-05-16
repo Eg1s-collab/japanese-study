@@ -150,7 +150,16 @@ h3 { margin: 0 0 6px; font-size: 16px; }
   border-radius: 0 8px 8px 0;
 }
 .point .pat { font-weight: 700; font-size: 16px; }
-.point .desc { color: var(--muted); font-size: 14px; margin-top: 2px; }
+.point .desc { color: #334155; font-size: 14px; margin-top: 4px; white-space: normal; }
+.point .vid-row { margin: 6px 0 4px; }
+.point .vid-link {
+  display: inline-block; font-size: 12.5px;
+  color: var(--accent); text-decoration: none;
+  border: 1px solid var(--accent-soft); padding: 3px 9px; border-radius: 999px;
+  background: #fff;
+}
+.point .vid-link:hover { background: var(--accent-soft); }
+.video-btn { color: var(--accent); border-color: var(--accent-soft); text-decoration:none; display:inline-flex; align-items:center; }
 
 .example {
   border-left: 3px solid #cbd5e1;
