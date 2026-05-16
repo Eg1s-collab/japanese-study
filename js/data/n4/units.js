@@ -307,7 +307,7 @@ window.N4_UNITS = [
     points: [
       {
         pattern: "V-た + ほうが いい / V-ない + ほうが いい",
-        desc: "แนะนำว่า 'V ดีกว่า / ไม่ V ดีกว่า' รูปทาบาบใช้ た (ปัจจุบันสำหรับคำแนะนำ) ปฏิเสธใช้ ない",
+        desc: "แนะนำว่า 'V ดีกว่า / ไม่ V ดีกว่า' รูปบอกใช้ た (รูปอดีตสำหรับคำแนะนำ) ปฏิเสธใช้ ない",
         examples: [
           { jp: "もう ねた ほうが いいですよ。", ro: "Mou neta hou ga ii desu yo.", th: "นอนได้แล้วดีกว่านะ" },
           { jp: "むりを しない ほうが いいですよ。", ro: "Muri o shinai hou ga ii desu yo.", th: "อย่าฝืนตัวเองดีกว่านะ" }
@@ -318,7 +318,7 @@ window.N4_UNITS = [
         desc: "คาดการณ์ 'คงจะ ~' / ขอความเห็นพ้อง  (ไม่ใช่ でしょう ของ です ที่ใช้กับสภาพอากาศ)",
         examples: [
           { jp: "あした さむくなる でしょう。", ro: "Ashita samuku naru deshou.", th: "พรุ่งนี้คงจะหนาวขึ้น" },
-          { jp: "あの 人は たぶん きょうしだ でしょう。", ro: "Ano hito wa tabun kyoushi da deshou.", th: "คนนั้นคงจะเป็นครูกระมัง" }
+          { jp: "あの 人は たぶん きょうしでしょう。", ro: "Ano hito wa tabun kyoushi deshou.", th: "คนนั้นคงจะเป็นครูกระมัง" }
         ]
       },
       {
@@ -473,8 +473,8 @@ window.N4_UNITS = [
         ]
       },
       {
-        pattern: "V-ば + V辞書形 jisho-kei + ほど、 ~",
-        desc: "'ยิ่ง V ยิ่ง ~' (สำนวน)  คุณศัพท์: い→ければ + い / なAdj.→なら + なほど",
+        pattern: "V-ば + V辞書形 + ほど / い-adj ければ + い + ほど / なAdj. + なら + なほど",
+        desc: "'ยิ่ง V/A ยิ่ง ~' (สำนวน)  เช่น 安(やす)ければ 安いほど = ยิ่งถูกยิ่งดี / 静(しず)かなら 静かなほど = ยิ่งเงียบยิ่ง ~",
         examples: [
           { jp: "考(かんが)えれば 考(かんが)えるほど、 わからなく なります。", ro: "Kangaereba kangaeru hodo, wakaranaku narimasu.", th: "ยิ่งคิดยิ่งไม่เข้าใจ" }
         ]
@@ -833,7 +833,7 @@ window.N4_UNITS = [
     summary: "การคาดเดาจากรูปลักษณ์ + การเคลื่อนไหว/เปลี่ยนแปลงต่อเนื่อง",
     points: [
       {
-        pattern: "V-ます-stem / い-adj い→/ なAdj. + そうです (รูปดู)",
+        pattern: "V-ます-stem / い-adj ตัด い / なAdj. + そうです (รูปดู)",
         desc: "'ดูเหมือนจะ ~' จากรูปลักษณ์ที่เห็น (い-adj ตัด い, いい→よさそう, ない→なさそう)",
         examples: [
           { jp: "この ケーキは おいしそうです。", ro: "Kono keeki wa oishi-sou desu.", th: "เค้กนี้ดูอร่อย" },
@@ -870,7 +870,7 @@ window.N4_UNITS = [
     summary: "การพูดถึงระดับเกินไป, ความง่าย/ยากของการกระทำ",
     points: [
       {
-        pattern: "V-ます-stem / い-adj い→/ なAdj. + すぎる",
+        pattern: "V-ます-stem / い-adj ตัด い / なAdj. + すぎる",
         desc: "'V/A เกินไป' — เป็น ichidan-verb ผันต่อได้ (すぎます, すぎて, すぎた)",
         examples: [
           { jp: "ゆうべ のみすぎました。", ro: "Yuube nomi-sugimashita.", th: "เมื่อคืนดื่มเกินไป" },

@@ -1,5 +1,5 @@
 /**
- * N5 grammar units (เนื้อหาตามหนังสือ Minna no Nihongo I บทที่ 1–17).
+ * N5 grammar units (เนื้อหาตามหนังสือ Minna no Nihongo I บทที่ 1–25).
  *
  * Schema (extend freely):
  *  unit:
@@ -753,7 +753,7 @@ window.N5_UNITS = [
       },
       {
         pattern: "บอกเวลา 〜じ 〜ふん/ぷん",
-        desc: "じ = นาฬิกา (โมง), ふん/ぷん = นาที (1ぷん, 2ふん, 3ぷん, 4ぷん, 5ふん, 10っぷん…)",
+        desc: "じ = นาฬิกา (โมง), ふん/ぷん = นาที (1ぷん いっぷん, 2ふん にふん, 3ぷん さんぷん, 4ぷん よんぷん, 5ふん ごふん, 10ぷん じゅっぷん/じっぷん…)",
         examples: [
           { jp: "いま 7じ 30ぷんです。", ro: "Ima shichi-ji san-juppun desu.", th: "ตอนนี้ 7 โมงครึ่ง" },
           { jp: "9じに はじまります。", ro: "Ku-ji ni hajimarimasu.", th: "เริ่ม 9 โมง" }
