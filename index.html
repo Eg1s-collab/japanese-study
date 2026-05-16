@@ -2,17 +2,31 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0e0c14" />
   <title>日本語ドリル — ฝึกภาษาญี่ปุ่น</title>
-  <link rel="stylesheet" href="css/style.css?v=20260516h" />
+  <link rel="stylesheet" href="css/style.css?v=20260516m" />
 </head>
 <body>
-  <header class="topbar">
+  <div class="ambient" aria-hidden="true">
+    <span class="ambient-orb ambient-orb-1"></span>
+    <span class="ambient-orb ambient-orb-2"></span>
+    <span class="ambient-orb ambient-orb-3"></span>
+    <span class="ambient-kanji ambient-kanji-1">学</span>
+    <span class="ambient-kanji ambient-kanji-2">道</span>
+    <span class="ambient-kanji ambient-kanji-3">心</span>
+  </div>
+
+  <header class="topbar glass">
     <div class="brand">
-      <span class="logo">日</span>
-      <div>
-        <h1>日本語ドリル</h1>
-        <p class="tag">สำหรับฝึกภาษาญี่ปุ่น</p>
+      <span class="logo" aria-hidden="true">
+        <span class="logo-char">日</span>
+      </span>
+      <div class="brand-text">
+        <h1>
+          <span class="brand-jp">日本語</span>
+          <span class="brand-romaji">Study</span>
+        </h1>
       </div>
     </div>
     <div class="topbar-right">
@@ -22,44 +36,79 @@
         <span>เข้าสู่ระบบ</span>
       </button>
       <span id="userInfo" class="user-info" style="display:none;"></span>
-      <label for="levelSelect" class="lvl-label">ระดับ</label>
-      <select id="levelSelect" class="level-select"></select>
+      <div class="theme-wrap">
+        <button id="themeBtn" class="theme-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="เลือกธีมสี" title="เลือกธีมสี">
+          <span class="theme-btn-dot"></span>
+        </button>
+        <div id="themePopover" class="theme-popover" role="dialog" aria-label="เลือกธีมสี" hidden>
+          <div class="theme-popover-title">ธีมสี</div>
+          <div class="theme-grid">
+            <button class="theme-swatch" data-theme="sakura" title="桜 ซากุระ" type="button"><span></span></button>
+            <button class="theme-swatch" data-theme="indigo" title="藍 อินดิโก้" type="button"><span></span></button>
+            <button class="theme-swatch" data-theme="matcha" title="抹茶 มัทฉะ" type="button"><span></span></button>
+            <button class="theme-swatch" data-theme="fuji" title="藤 ฟูจิ" type="button"><span></span></button>
+            <button class="theme-swatch" data-theme="shu" title="朱 ชู (vermillion)" type="button"><span></span></button>
+            <button class="theme-swatch" data-theme="kogane" title="黄金 ทอง" type="button"><span></span></button>
+            <button class="theme-swatch" data-theme="sumi" title="墨 สุมิ (mono)" type="button"><span></span></button>
+          </div>
+        </div>
+      </div>
+      <div class="level-wrap">
+        <label for="levelSelect" class="lvl-label">ระดับ</label>
+        <select id="levelSelect" class="level-select"></select>
+      </div>
     </div>
   </header>
 
-  <nav class="tabs">
-    <button class="tab active" data-tab="units">📖 บทเรียน</button>
-    <button class="tab" data-tab="quiz">📝 แบบฝึกหัด</button>
-    <button class="tab" data-tab="conjugation">🔁 ผันคำ</button>
-    <button class="tab" data-tab="flashcards">📇 บัตรคำ</button>
-    <button class="tab" data-tab="bookmarks">⭐ ทวนซ้ำ</button>
+  <nav class="tabs glass" role="tablist">
+    <button class="tab active" data-tab="units" role="tab">
+      <span class="tab-jp">本</span>
+      <span class="tab-label">บทเรียน</span>
+    </button>
+    <button class="tab" data-tab="quiz" role="tab">
+      <span class="tab-jp">問</span>
+      <span class="tab-label">แบบฝึกหัด</span>
+    </button>
+    <button class="tab" data-tab="conjugation" role="tab">
+      <span class="tab-jp">活</span>
+      <span class="tab-label">ผันคำ</span>
+    </button>
+    <button class="tab" data-tab="flashcards" role="tab">
+      <span class="tab-jp">札</span>
+      <span class="tab-label">บัตรคำ</span>
+    </button>
+    <button class="tab" data-tab="bookmarks" role="tab">
+      <span class="tab-jp">星</span>
+      <span class="tab-label">ทวนซ้ำ</span>
+    </button>
   </nav>
 
   <main id="view"></main>
 
   <footer class="foot">
-    <span>เลือกระดับด้านบน — เนื้อหา N5 (Minna I 1–25) / N4 (Minna II 26–50) / N3 (จาก JLPT N3 文法)</span>
+    <span>เนื้อหา N5 (Minna I 1–25) · N4 (Minna II 26–50) · N3 (JLPT N3 文法)</span>
   </footer>
 
-  <script src="js/data/n5/units.js?v=20260516h"></script>
-  <script src="js/data/n5/conjugation.js?v=20260516h"></script>
-  <script src="js/data/n4/units.js?v=20260516h"></script>
-  <script src="js/data/n4/conjugation.js?v=20260516h"></script>
-  <script src="js/data/n3/units.js?v=20260516h"></script>
-  <script src="js/data/n3/conjugation.js?v=20260516h"></script>
-  <script src="js/data/n3/videos.js?v=20260516h"></script>
-  <script src="js/data/index.js?v=20260516h"></script>
-  <script src="js/storage.js?v=20260516h"></script>
-  <script src="js/conj_storage.js?v=20260516h"></script>
-  <script src="js/flashcards_storage.js?v=20260516h"></script>
-  <script src="js/lesson_progress.js?v=20260516h"></script>
-  <script src="js/kana_keypad.js?v=20260516h"></script>
-  <script src="js/views/units.js?v=20260516h"></script>
-  <script src="js/views/quiz.js?v=20260516h"></script>
-  <script src="js/views/conjugation.js?v=20260516h"></script>
-  <script src="js/views/flashcards.js?v=20260516h"></script>
-  <script src="js/views/bookmarks.js?v=20260516h"></script>
-  <script src="js/app.js?v=20260516h"></script>
-  <script type="module" src="js/cloud_sync.js?v=20260516h"></script>
+  <script src="js/theme.js?v=20260516l"></script>
+  <script src="js/data/n5/units.js?v=20260516j"></script>
+  <script src="js/data/n5/conjugation.js?v=20260516j"></script>
+  <script src="js/data/n4/units.js?v=20260516j"></script>
+  <script src="js/data/n4/conjugation.js?v=20260516j"></script>
+  <script src="js/data/n3/units.js?v=20260516j"></script>
+  <script src="js/data/n3/conjugation.js?v=20260516j"></script>
+  <script src="js/data/n3/videos.js?v=20260516j"></script>
+  <script src="js/data/index.js?v=20260516j"></script>
+  <script src="js/storage.js?v=20260516j"></script>
+  <script src="js/conj_storage.js?v=20260516j"></script>
+  <script src="js/flashcards_storage.js?v=20260516j"></script>
+  <script src="js/lesson_progress.js?v=20260516j"></script>
+  <script src="js/kana_keypad.js?v=20260516j"></script>
+  <script src="js/views/units.js?v=20260516j"></script>
+  <script src="js/views/quiz.js?v=20260516j"></script>
+  <script src="js/views/conjugation.js?v=20260516j"></script>
+  <script src="js/views/flashcards.js?v=20260516j"></script>
+  <script src="js/views/bookmarks.js?v=20260516j"></script>
+  <script src="js/app.js?v=20260516j"></script>
+  <script type="module" src="js/cloud_sync.js?v=20260516j"></script>
 </body>
 </html>
