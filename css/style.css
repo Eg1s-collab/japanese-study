@@ -728,11 +728,16 @@ h3 { margin: 0 0 6px; font-size: 16px; }
 }
 .foot code { background: var(--glass-bg); color: var(--accent); padding: 1px 6px; border-radius: 6px; border: 1px solid var(--glass-border); }
 
-.controls { display:flex; gap:8px; flex-wrap:wrap; margin-bottom: 12px; }
+.controls { display:flex; gap:8px; flex-wrap:wrap; margin-bottom: 12px; align-items: center; min-width: 0; }
 .controls select, .controls input[type=number] {
   padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line);
   background: var(--card); color: var(--ink);
+  max-width: 100%; min-width: 0;
+  text-overflow: ellipsis;
 }
+/* Long unit/form labels: let the select shrink and ellipsize */
+.controls #unitSel,
+.controls #formSel { flex: 1 1 160px; min-width: 0; }
 
 .score-card {
   display:flex; gap: 16px; align-items:center; justify-content: space-between;
@@ -863,6 +868,24 @@ h3 { margin: 0 0 6px; font-size: 16px; }
   .btn { min-height: 38px; padding: 9px 14px; }
   /* Inputs: 16px to prevent iOS auto-zoom on focus */
   .txt-input, .controls select, .controls input[type=number] { font-size: 16px; }
+  /* Quiz unit + conjugation form selects: full-row, ellipsize so long labels don't overflow */
+  .controls { gap: 6px; }
+  .controls #unitSel,
+  .controls #formSel,
+  .controls #modeSel { flex: 1 1 100%; width: 100%; }
+  /* Conjugation form pills: scroll horizontally instead of wrapping into many rows
+     that push the keypad below the visible question on small screens */
+  .fpill-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+    margin-right: -14px; /* let row bleed to card edge so users can see scrollability */
+    padding-right: 14px;
+  }
+  .fpill-row::-webkit-scrollbar { display: none; }
+  .fpill { white-space: nowrap; flex-shrink: 0; }
 }
 
 /* ---------- Flashcards ---------- */

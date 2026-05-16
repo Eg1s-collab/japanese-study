@@ -88,6 +88,14 @@ window.ConjugationView = (function () {
       ensureValidTarget();
       item = pickItem();
       draw();
+      // Keep the question in view on mobile (fpill-row + on-screen keypad
+      // can otherwise push the prompt above the visible viewport).
+      requestAnimationFrame(() => {
+        const card = root.querySelector(".card");
+        if (card && typeof card.scrollIntoView === "function") {
+          card.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      });
     }
 
     function modeLabel() {
