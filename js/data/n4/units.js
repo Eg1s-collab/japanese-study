@@ -14,7 +14,7 @@ window.N4_UNITS = [
     summary: "อธิบายสาเหตุ/ขอข้อมูลด้วย んです, การขอร้องสุภาพมาก ~ていただけませんか",
     points: [
       {
-        pattern: "V/A plain + んです / N・なA + な + んです",
+        pattern: "V/A plain + んです / N・なAdj. + な + んです",
         desc: "ใช้อธิบาย เหตุผล/สถานการณ์ หรือถามเหตุผล ใช้ในการสนทนา (เขียนเป็น のです). คำนาม-な + な + んです",
         examples: [
           { jp: "どうして おくれましたか。― バスが おくれたんです。", ro: "Doushite okuremashita ka. — Basu ga okureta n desu.", th: "ทำไมมาสาย? — เพราะรถบัสมาสาย" },
@@ -43,7 +43,7 @@ window.N4_UNITS = [
         q: "どうして がっこうを やすみましたか。― ____。",
         choices: ["びょうきでした", "びょうきだったんです", "びょうきです", "びょうきな"],
         answer: 1,
-        explain: "อธิบายเหตุผลใช้ ~んです (なA → だった + んです)" },
+        explain: "อธิบายเหตุผลใช้ ~んです (なAdj. → だった + んです)" },
       { type: "fill",
         q: "もう いちど せつめいして ____ませんか。",
         answer: ["いただけ"],
@@ -323,7 +323,7 @@ window.N4_UNITS = [
       },
       {
         pattern: "S(plain) + かも しれません",
-        desc: "'อาจจะ ~' — ความน่าจะเป็นต่ำกว่า でしょう  รูป plain หน้า かもしれない (なA・N ตัด だ)",
+        desc: "'อาจจะ ~' — ความน่าจะเป็นต่ำกว่า でしょう  รูป plain หน้า かもしれない (なAdj.・N ตัด だ)",
         examples: [
           { jp: "あした あめが ふるかも しれません。", ro: "Ashita ame ga furu kamo shiremasen.", th: "พรุ่งนี้ฝนอาจตก" },
           { jp: "あの 人は がくせいかも しれません。", ro: "Ano hito wa gakusei kamo shiremasen.", th: "คนนั้นอาจเป็นนักเรียน" }
@@ -456,7 +456,7 @@ window.N4_UNITS = [
     summary: "เงื่อนไข ば และความต่างกับ たら/と/なら, สำนวน ยิ่ง...ยิ่ง...",
     points: [
       {
-        pattern: "V ば (godan u→e+ば / ichidan る→れば / い-adj い→ければ / なA・N + なら)",
+        pattern: "V ば (godan u→e+ば / ichidan る→れば / い-adj い→ければ / なAdj.・N + なら)",
         desc: "'ถ้า ~' เน้นเงื่อนไข — มักใช้กับเงื่อนไขที่ไม่ขึ้นกับคน หรือสำนวนทั่วไป",
         examples: [
           { jp: "やすければ かいます。", ro: "Yasukereba kaimasu.", th: "ถ้าถูกจะซื้อ" },
@@ -474,7 +474,7 @@ window.N4_UNITS = [
       },
       {
         pattern: "V-ば + V辞書形 jisho-kei + ほど、 ~",
-        desc: "'ยิ่ง V ยิ่ง ~' (สำนวน)  คุณศัพท์: い→ければ + い / なA→なら + なほど",
+        desc: "'ยิ่ง V ยิ่ง ~' (สำนวน)  คุณศัพท์: い→ければ + い / なAdj.→なら + なほど",
         examples: [
           { jp: "考(かんが)えれば 考(かんが)えるほど、 わからなく なります。", ro: "Kangaereba kangaeru hodo, wakaranaku narimasu.", th: "ยิ่งคิดยิ่งไม่เข้าใจ" }
         ]
@@ -659,7 +659,7 @@ window.N4_UNITS = [
       },
       {
         pattern: "S1(plain) + ので、 S2",
-        desc: "'เพราะ ~' (สุภาพกว่า から / เป็นกลาง)  なA・N + な + ので",
+        desc: "'เพราะ ~' (สุภาพกว่า から / เป็นกลาง)  なAdj.・N + な + ので",
         examples: [
           { jp: "ねつが ある ので、 やすませて ください。", ro: "Netsu ga aru node, yasumasete kudasai.", th: "เนื่องจากมีไข้ ขอลาหยุดด้วย" },
           { jp: "しずかな ので、 よく ねむれます。", ro: "Shizuka na node, yoku nemuremasu.", th: "เพราะเงียบ จึงนอนหลับได้ดี" }
@@ -667,7 +667,7 @@ window.N4_UNITS = [
       },
       {
         pattern: "S1(plain) + のに、 S2",
-        desc: "'ทั้ง ๆ ที่ ~ แต่ ~' — บอกความตรงข้ามกับที่คาด  なA・N + な + のに",
+        desc: "'ทั้ง ๆ ที่ ~ แต่ ~' — บอกความตรงข้ามกับที่คาด  なAdj.・N + な + のに",
         examples: [
           { jp: "あめが ふって いる のに、 でかけました。", ro: "Ame ga futte iru noni, dekakemashita.", th: "ทั้ง ๆ ที่ฝนตกก็ออกไป" },
           { jp: "やすかった のに、 おいしいです。", ro: "Yasukatta noni, oishii desu.", th: "ถูกแต่อร่อยจัง" }
@@ -833,7 +833,7 @@ window.N4_UNITS = [
     summary: "การคาดเดาจากรูปลักษณ์ + การเคลื่อนไหว/เปลี่ยนแปลงต่อเนื่อง",
     points: [
       {
-        pattern: "V-ます-stem / い-adj い→/ なA + そうです (รูปดู)",
+        pattern: "V-ます-stem / い-adj い→/ なAdj. + そうです (รูปดู)",
         desc: "'ดูเหมือนจะ ~' จากรูปลักษณ์ที่เห็น (い-adj ตัด い, いい→よさそう, ない→なさそう)",
         examples: [
           { jp: "この ケーキは おいしそうです。", ro: "Kono keeki wa oishi-sou desu.", th: "เค้กนี้ดูอร่อย" },
@@ -870,7 +870,7 @@ window.N4_UNITS = [
     summary: "การพูดถึงระดับเกินไป, ความง่าย/ยากของการกระทำ",
     points: [
       {
-        pattern: "V-ます-stem / い-adj い→/ なA + すぎる",
+        pattern: "V-ます-stem / い-adj い→/ なAdj. + すぎる",
         desc: "'V/A เกินไป' — เป็น ichidan-verb ผันต่อได้ (すぎます, すぎて, すぎた)",
         examples: [
           { jp: "ゆうべ のみすぎました。", ro: "Yuube nomi-sugimashita.", th: "เมื่อคืนดื่มเกินไป" },
@@ -954,7 +954,7 @@ window.N4_UNITS = [
     points: [
       {
         pattern: "S(plain) + そうです (เล่าลือ — ระวังต่างกับ ~そう ของบทก่อน)",
-        desc: "'ได้ยินมาว่า / มีข่าวว่า ~' ใช้ plain ก่อน そう (なA + だ + そう / N + だ + そう)",
+        desc: "'ได้ยินมาว่า / มีข่าวว่า ~' ใช้ plain ก่อน そう (なAdj. + だ + そう / N + だ + そう)",
         examples: [
           { jp: "ニュースに よると、 たいふうが 来る そうです。", ro: "Nyuusu ni yoru to, taifuu ga kuru sou desu.", th: "ตามข่าวว่า พายุไต้ฝุ่นกำลังมา" },
           { jp: "ミラーさんは げんきだ そうです。", ro: "Mira-san wa genki da sou desu.", th: "ได้ยินมาว่าคุณมิลเลอร์สบายดี" }
@@ -962,7 +962,7 @@ window.N4_UNITS = [
       },
       {
         pattern: "S(plain) + ようです / みたいです",
-        desc: "'ดูเหมือน / ราวกับ ~' — คาดเดาจากข้อมูลรอบตัว (なA・N + な/の + ようだ; みたい เป็นภาษาพูด)",
+        desc: "'ดูเหมือน / ราวกับ ~' — คาดเดาจากข้อมูลรอบตัว (なAdj.・N + な/の + ようだ; みたい เป็นภาษาพูด)",
         examples: [
           { jp: "あの 人は びょうきの ようです。", ro: "Ano hito wa byouki no you desu.", th: "คนนั้นดูเหมือนจะป่วย" },
           { jp: "だれか 来た みたいです。", ro: "Dareka kita mitai desu.", th: "ดูเหมือนจะมีใครมา" }

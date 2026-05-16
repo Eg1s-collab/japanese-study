@@ -45,6 +45,8 @@ window.UnitsView = (function () {
     if (!unit) return document.createTextNode("ไม่พบ unit");
 
     const playlistUrl = unit.playlistUrl || lv.playlistUrl || "";
+    const playlistId = window.N3_PLAYLIST_ID || "";
+    const videoIds = window.N3_VIDEO_IDS || {};
 
     const points = unit.points
       .map(
@@ -52,7 +54,7 @@ window.UnitsView = (function () {
       <div class="point">
         <div class="pat">${escapeHtml(p.pattern)}</div>
         <div class="desc">${formatDesc(p.desc)}</div>
-        ${p.videoTopic ? videoLinkHtml(p.videoTopic, playlistUrl) : ""}
+        ${p.videoTopic ? videoBlockHtml(p.videoTopic, videoIds[p.videoTopic], playlistId) : ""}
         ${(p.examples || [])
           .map(
             (ex) => `
@@ -81,6 +83,7 @@ window.UnitsView = (function () {
       <div class="card">
         <h2>${escapeHtml(unit.title)}</h2>
         <p class="subtle">${escapeHtml(unit.summary || "")}</p>
+        ${legendHtml()}
         ${points}
       </div>
     `;
@@ -115,12 +118,43 @@ window.UnitsView = (function () {
     return escapeHtml(s || "").replace(/\n/g, "<br>");
   }
 
-  function videoLinkHtml(topic, playlistUrl) {
-    // เปิด YouTube search ในเพลย์ลิสต์เดียวกัน (ผ่าน search_query ทั่วไป)
+  function legendHtml() {
+    // อธิบายตัวย่อที่ใช้ในรูปไวยากรณ์ — ผู้เริ่มต้นจะได้รู้ว่า "stem" คืออะไร
+    return `
+      <details class="legend">
+        <summary>📘 คำย่อในรูปไวยากรณ์ (กดเพื่ออ่าน)</summary>
+        <div class="legend-body">
+          <ul>
+            <li><b>V</b> = คำกริยา (Verb)</li>
+            <li><b>Vる / 辞書形 (jisho-kei)</b> = รูปดิคชันนารี เช่น 食(た)べる, 行(い)く</li>
+            <li><b>Vます-stem</b> = ตัด <code>ます</code> ออกจากรูป ます<br>เช่น 食べ<u>ます</u> → <b>食べ</b> ・ 飲み<u>ます</u> → <b>飲み</b> ・ 読み<u>ます</u> → <b>読み</b><br>ส่วนที่เหลือนี้เรียกว่า "stem" (รากกริยา) ใช้ต่อกับไวยากรณ์ N3 หลายตัว เช่น <code>~かけ</code>, <code>~次第</code>, <code>~がたい</code></li>
+            <li><b>Vて</b> = รูป て เช่น 食べて, 行って, 読んで</li>
+            <li><b>Vた</b> = รูปอดีต (普通体) เช่น 食べた, 行った</li>
+            <li><b>Vない</b> = รูปปฏิเสธ (普通体) เช่น 食べない, 行かない</li>
+            <li><b>Vば / V-ば形 (ba-kei)</b> = รูปเงื่อนไข เช่น 食べれば, 行けば, 安(やす)ければ</li>
+            <li><b>Adj.</b> = คำคุณศัพท์ (Adjective)</li>
+            <li><b>Adj.い</b> = い-adjective (い形容詞) เช่น 高(たか)い, 安(やす)い</li>
+            <li><b>なAdj.</b> = な-adjective (な形容詞) เช่น 静(しず)か, 元気(げんき)</li>
+            <li><b>N</b> = คำนาม (Noun)</li>
+            <li><b>普通体 (futsuu-tai)</b> = รูปธรรมดา (ไม่สุภาพ) เช่น 食べる/食べない/食べた/食べなかった</li>
+          </ul>
+        </div>
+      </details>`;
+  }
+
+  function videoBlockHtml(topic, videoId, playlistId) {
+    // Link directly to YouTube — open the matching video (inside its playlist
+    // when we know the mapping), or fall back to a search query.
+    if (videoId) {
+      const watchUrl = `https://www.youtube.com/watch?v=${videoId}${playlistId ? "&list=" + playlistId : ""}`;
+      return `<div class="vid-row">
+        <a class="vid-link" href="${escapeAttr(watchUrl)}" target="_blank" rel="noopener">▶ ดูวิดีโอบน YouTube</a>
+      </div>`;
+    }
     const q = encodeURIComponent("JLPT N3 " + topic);
     const searchUrl = "https://www.youtube.com/results?search_query=" + q;
     return `<div class="vid-row">
-      <a class="vid-link" href="${escapeAttr(searchUrl)}" target="_blank" rel="noopener">▶ ค้นวิดีโอ "${escapeHtml(topic)}"</a>
+      <a class="vid-search" href="${escapeAttr(searchUrl)}" target="_blank" rel="noopener">🔎 ค้นวิดีโอ "${escapeHtml(topic)}"</a>
     </div>`;
   }
 
