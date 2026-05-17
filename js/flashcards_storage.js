@@ -11,7 +11,8 @@
  *       id, name, folderId|null, createdAt,
  *       words: [{ id, front, back, starred, createdAt }],
  *       chunkSize: number|null,     // null = no sub-sets
- *       selectedChunk: number,      // 0-based index of the chunk in use
+ *       selectedChunk: number,      // 0-based index of the first selected chunk (legacy)
+ *       selectedChunks: number[],   // 0-based indices of all selected chunks (multi-select)
  *       progress: {
  *         cards: { seenIds: [wordId, ...] },
  *         learn: { completedIds: [wordId, ...], attempts: n, correct: n }
@@ -30,6 +31,16 @@ window.FlashcardsStorage = (function () {
   function ensureDeckShape(d) {
     if (typeof d.chunkSize === "undefined") d.chunkSize = null;
     if (typeof d.selectedChunk !== "number" || d.selectedChunk < 0) d.selectedChunk = 0;
+    // Multi-chunk selection (review can span several sub-sets at once).
+    // Migrate legacy single-chunk decks by seeding [selectedChunk].
+    if (!Array.isArray(d.selectedChunks) || !d.selectedChunks.length) {
+      d.selectedChunks = [d.selectedChunk || 0];
+    }
+    d.selectedChunks = d.selectedChunks
+      .map((n) => Math.max(0, Math.floor(Number(n) || 0)))
+      .filter((n, i, a) => a.indexOf(n) === i)
+      .sort((a, b) => a - b);
+    if (!d.selectedChunks.length) d.selectedChunks = [0];
     if (!d.progress || typeof d.progress !== "object") d.progress = {};
     if (!d.progress.cards || typeof d.progress.cards !== "object") d.progress.cards = {};
     if (!Array.isArray(d.progress.cards.seenIds)) d.progress.cards.seenIds = [];
@@ -251,6 +262,7 @@ window.FlashcardsStorage = (function () {
     const n = Number(size);
     d.chunkSize = (n && n > 0) ? Math.floor(n) : null;
     d.selectedChunk = 0;
+    d.selectedChunks = [0];
     clearRounds(d);
     save(state);
   }
@@ -259,6 +271,22 @@ window.FlashcardsStorage = (function () {
     const d = state.decks.find((x) => x.id === deckId);
     if (!d) return;
     d.selectedChunk = Math.max(0, Math.floor(Number(idx) || 0));
+    d.selectedChunks = [d.selectedChunk];
+    clearRounds(d);
+    save(state);
+  }
+  function setSelectedChunks(deckId, indices) {
+    const state = load();
+    const d = state.decks.find((x) => x.id === deckId);
+    if (!d) return;
+    const total = chunkCount(d);
+    const clean = (Array.isArray(indices) ? indices : [])
+      .map((n) => Math.max(0, Math.floor(Number(n) || 0)))
+      .filter((n) => n < total)
+      .filter((n, i, a) => a.indexOf(n) === i)
+      .sort((a, b) => a - b);
+    d.selectedChunks = clean.length ? clean : [0];
+    d.selectedChunk = d.selectedChunks[0];
     clearRounds(d);
     save(state);
   }
@@ -266,21 +294,37 @@ window.FlashcardsStorage = (function () {
     if (!deck.chunkSize || !deck.words.length) return 1;
     return Math.max(1, Math.ceil(deck.words.length / deck.chunkSize));
   }
+  function selectedChunkIndices(deck) {
+    if (!deck.chunkSize) return [0];
+    const total = chunkCount(deck);
+    const arr = Array.isArray(deck.selectedChunks) && deck.selectedChunks.length
+      ? deck.selectedChunks
+      : [deck.selectedChunk || 0];
+    return arr
+      .map((n) => Math.max(0, Math.min(total - 1, Math.floor(Number(n) || 0))))
+      .filter((n, i, a) => a.indexOf(n) === i)
+      .sort((a, b) => a - b);
+  }
   function chunkWords(deck) {
     if (!deck.chunkSize) return deck.words.slice();
     const size = deck.chunkSize;
-    const total = chunkCount(deck);
-    const idx = Math.min(Math.max(0, deck.selectedChunk || 0), total - 1);
-    return deck.words.slice(idx * size, idx * size + size);
+    const indices = selectedChunkIndices(deck);
+    const out = [];
+    for (const idx of indices) {
+      out.push(...deck.words.slice(idx * size, idx * size + size));
+    }
+    return out;
   }
   function chunkRange(deck) {
     if (!deck.chunkSize) return { from: 1, to: deck.words.length };
     const size = deck.chunkSize;
-    const total = chunkCount(deck);
-    const idx = Math.min(Math.max(0, deck.selectedChunk || 0), total - 1);
-    const from = idx * size + 1;
-    const to = Math.min(deck.words.length, (idx + 1) * size);
-    return { from, to };
+    const indices = selectedChunkIndices(deck);
+    if (indices.length === 1) {
+      const idx = indices[0];
+      return { from: idx * size + 1, to: Math.min(deck.words.length, (idx + 1) * size) };
+    }
+    // Non-contiguous (or multiple) selection — no single range.
+    return null;
   }
 
   /* ---------- progress ---------- */
@@ -375,7 +419,7 @@ window.FlashcardsStorage = (function () {
     createFolder, renameFolder, deleteFolder,
     createDeck, renameDeck, moveDeck, deleteDeck,
     addWord, updateWord, deleteWord, toggleStar,
-    setChunkSize, setSelectedChunk, chunkCount, chunkWords, chunkRange,
+    setChunkSize, setSelectedChunk, setSelectedChunks, chunkCount, chunkWords, chunkRange, selectedChunkIndices,
     markCardSeen, unmarkCardSeen, recordLearnAttempt, clearProgress,
     setCardsRound, setLearnRound,
     parseCSV, importCSV,

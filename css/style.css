@@ -1120,6 +1120,33 @@ h3 { margin: 0 0 6px; font-size: 16px; }
 }
 .fc-chunk-row .level-select { font-size: 14px; }
 
+.fc-chunk-grid {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin-top: 10px;
+}
+.fc-chunk-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+  user-select: none;
+}
+.fc-chunk-chip:hover { background: var(--glass-bg-strong); }
+.fc-chunk-chip.is-on {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+.fc-chunk-chip .fc-chunk-range { color: var(--muted); font-size: 11px; }
+.fc-chunk-chip.is-on .fc-chunk-range { color: var(--accent); opacity: .8; }
+.fc-chunk-actions { display: flex; gap: 8px; margin-top: 10px; }
+.fc-chunk-actions .btn { padding: 4px 10px; font-size: 12px; }
+
 .fc-mode-row {
   display: flex; gap: 14px; align-items: center; justify-content: space-between;
   flex-wrap: wrap;

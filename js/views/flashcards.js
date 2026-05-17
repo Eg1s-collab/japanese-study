@@ -20,8 +20,8 @@ window.FlashcardsView = (function () {
     screen: "home",
     folderId: null,
     deckId: null,
-    cardsOpts: { shuffle: false, swap: false, starredOnly: false },
-    learnOpts: { swap: false, starredOnly: false }
+    cardsOpts: { shuffle: false, swap: false, starredOnly: false, autoSpeak: false },
+    learnOpts: { swap: false, starredOnly: false, autoSpeak: false }
   };
 
   /* ---------- utils ---------- */
@@ -54,8 +54,14 @@ window.FlashcardsView = (function () {
   function chunkLabel(deck) {
     if (!deck.chunkSize) return `ทั้งหมด (${deck.words.length} คำ)`;
     const total = FS().chunkCount(deck);
-    const r = FS().chunkRange(deck);
-    return `ชุด ${deck.selectedChunk + 1}/${total} (คำ ${r.from}-${r.to})`;
+    const indices = FS().selectedChunkIndices(deck);
+    const wordCount = FS().chunkWords(deck).length;
+    if (indices.length === 1) {
+      const r = FS().chunkRange(deck);
+      return `ชุด ${indices[0] + 1}/${total} (คำ ${r.from}-${r.to})`;
+    }
+    const labels = indices.map((i) => i + 1).join(", ");
+    return `ชุด ${labels} (รวม ${wordCount} คำ จาก ${total} ชุด)`;
   }
 
   /* ===================== top-level render ===================== */
@@ -253,11 +259,13 @@ window.FlashcardsView = (function () {
       const chunkOpts = [25, 50, 100].map((n) =>
         `<option value="${n}" ${deck.chunkSize === n ? "selected" : ""}>${n} คำ/ชุด</option>`
       ).join("");
-      const chunkPickerOpts = Array.from({ length: chunkTotal }, (_, i) => {
+      const selectedSet = new Set(FS().selectedChunkIndices(deck));
+      const chunkChips = deck.chunkSize ? Array.from({ length: chunkTotal }, (_, i) => {
         const from = i * deck.chunkSize + 1;
         const to = Math.min(total, (i + 1) * deck.chunkSize);
-        return `<option value="${i}" ${i === deck.selectedChunk ? "selected" : ""}>ชุด ${i + 1} (คำ ${from}-${to})</option>`;
-      }).join("");
+        const on = selectedSet.has(i);
+        return `<button class="fc-chunk-chip ${on ? "is-on" : ""}" data-chunk="${i}" aria-pressed="${on}">ชุด ${i + 1}<span class="fc-chunk-range">${from}-${to}</span></button>`;
+      }).join("") : "";
 
       root.innerHTML = `
         <div class="qmeta">
@@ -277,13 +285,17 @@ window.FlashcardsView = (function () {
                 <option value="custom">กำหนดเอง…</option>
               </select>
             </label>
-            ${deck.chunkSize ? `
-              <label class="fc-toggle" style="gap:8px;">
-                <span>เลือกชุด:</span>
-                <select id="chunkIdxSel" class="level-select">${chunkPickerOpts}</select>
-              </label>` : ""}
           </div>
-          <p class="subtle" style="margin:8px 0 0;">ใช้กับ ${escapeHtml(chunkLabel(deck))}</p>
+          ${deck.chunkSize ? `
+            <p class="subtle" style="margin:12px 0 4px;">เลือกชุดย่อยที่จะทบทวน (เลือกหลายชุดได้)</p>
+            <div class="fc-chunk-grid" id="chunkGrid">${chunkChips}</div>
+            <div class="fc-chunk-actions">
+              <button class="btn ghost" id="chunkAll">เลือกทั้งหมด</button>
+              <button class="btn ghost" id="chunkInvert">สลับ</button>
+              <button class="btn ghost" id="chunkClear">ล้าง (เลือกเฉพาะชุด 1)</button>
+            </div>
+          ` : ""}
+          <p class="subtle" style="margin:10px 0 0;">ใช้กับ ${escapeHtml(chunkLabel(deck))}</p>
         </div>
 
         <div class="card">
@@ -404,10 +416,41 @@ window.FlashcardsView = (function () {
         FS().setChunkSize(deck.id, v ? Number(v) : null);
         draw();
       });
-      const idxSel = root.querySelector("#chunkIdxSel");
-      if (idxSel) {
-        idxSel.addEventListener("change", () => {
-          FS().setSelectedChunk(deck.id, Number(idxSel.value));
+      const grid = root.querySelector("#chunkGrid");
+      if (grid) {
+        grid.querySelectorAll(".fc-chunk-chip").forEach((chip) => {
+          chip.addEventListener("click", () => {
+            const idx = Number(chip.dataset.chunk);
+            const current = new Set(FS().selectedChunkIndices(FS().getDeck(deck.id)));
+            if (current.has(idx)) {
+              if (current.size === 1) return; // keep at least one selected
+              current.delete(idx);
+            } else {
+              current.add(idx);
+            }
+            FS().setSelectedChunks(deck.id, Array.from(current));
+            draw();
+          });
+        });
+        const allBtn = root.querySelector("#chunkAll");
+        if (allBtn) allBtn.addEventListener("click", () => {
+          const total = FS().chunkCount(FS().getDeck(deck.id));
+          FS().setSelectedChunks(deck.id, Array.from({ length: total }, (_, i) => i));
+          draw();
+        });
+        const invertBtn = root.querySelector("#chunkInvert");
+        if (invertBtn) invertBtn.addEventListener("click", () => {
+          const dk = FS().getDeck(deck.id);
+          const total = FS().chunkCount(dk);
+          const cur = new Set(FS().selectedChunkIndices(dk));
+          const next = [];
+          for (let i = 0; i < total; i++) if (!cur.has(i)) next.push(i);
+          FS().setSelectedChunks(deck.id, next.length ? next : [0]);
+          draw();
+        });
+        const clearBtn = root.querySelector("#chunkClear");
+        if (clearBtn) clearBtn.addEventListener("click", () => {
+          FS().setSelectedChunks(deck.id, [0]);
           draw();
         });
       }
@@ -516,6 +559,23 @@ window.FlashcardsView = (function () {
     let animating = false;
     // In-memory undo stack — entries: { wid, action }. Lost on reload/back.
     const history = [];
+    // Track last auto-spoken (wid + face) so re-renders (star toggle, etc.)
+    // don't repeat speech for the same card+side.
+    let lastSpokenKey = null;
+
+    function maybeAutoSpeak(force) {
+      if (!state.cardsOpts.autoSpeak) return;
+      const wid = queueIds[0];
+      if (!wid) return;
+      const w = wordById(wid);
+      if (!w) return;
+      const text = flipped ? backOf(w) : frontOf(w);
+      if (!hasJapanese(text)) return;
+      const key = `${wid}:${flipped ? "b" : "f"}`;
+      if (!force && key === lastSpokenKey) return;
+      lastSpokenKey = key;
+      speak(text, "ja-JP");
+    }
 
     function frontOf(w) { return state.cardsOpts.swap ? w.back : w.front; }
     function backOf(w)  { return state.cardsOpts.swap ? w.front : w.back; }
@@ -576,6 +636,7 @@ window.FlashcardsView = (function () {
       flipped = false;
       animating = false;
       history.length = 0;
+      lastSpokenKey = null;
       persist();
       draw();
     }
@@ -587,6 +648,7 @@ window.FlashcardsView = (function () {
       flipped = false;
       animating = false;
       history.length = 0;
+      lastSpokenKey = null;
       persist();
       draw();
     }
@@ -597,6 +659,7 @@ window.FlashcardsView = (function () {
           <label class="fc-toggle"><input type="checkbox" data-opt="shuffle" ${state.cardsOpts.shuffle ? "checked" : ""}/> สลับลำดับ</label>
           <label class="fc-toggle"><input type="checkbox" data-opt="swap" ${state.cardsOpts.swap ? "checked" : ""}/> สลับด้าน</label>
           <label class="fc-toggle"><input type="checkbox" data-opt="starredOnly" ${state.cardsOpts.starredOnly ? "checked" : ""}/> ดาวเท่านั้น</label>
+          <label class="fc-toggle"><input type="checkbox" data-opt="autoSpeak" ${state.cardsOpts.autoSpeak ? "checked" : ""}/> 🔊 อ่านอัตโนมัติ</label>
         </div>
       `;
     }
@@ -607,6 +670,13 @@ window.FlashcardsView = (function () {
           const opt = cb.dataset.opt;
           if (opt === "starredOnly" || opt === "shuffle") {
             resetRound();
+          } else if (opt === "autoSpeak") {
+            // Toggle only — no need to redraw or interrupt the current card.
+            if (!cb.checked) {
+              window.speechSynthesis && window.speechSynthesis.cancel();
+            } else {
+              maybeAutoSpeak(true);
+            }
           } else {
             draw();
           }
@@ -754,6 +824,8 @@ window.FlashcardsView = (function () {
         draw();
       });
       root.querySelector("#speakBtn").addEventListener("click", () => speak(shownText));
+
+      maybeAutoSpeak();
     }
 
     function setupSwipe(cardEl) {
@@ -886,6 +958,7 @@ window.FlashcardsView = (function () {
     let { queueIds, wrongIds, roundTotal } = loadRound();
     let answeredThis = false;
     let autoAdvanceTimer = null;
+    let lastSpokenWid = null;
 
     function persist() {
       FS().setLearnRound(deck.id, { queueIds, wrongIds, roundTotal });
@@ -893,12 +966,25 @@ window.FlashcardsView = (function () {
     function clearAutoAdvance() {
       if (autoAdvanceTimer) { clearTimeout(autoAdvanceTimer); autoAdvanceTimer = null; }
     }
+    function maybeAutoSpeak(force) {
+      if (!state.learnOpts.autoSpeak) return;
+      const wid = queueIds[0];
+      if (!wid) return;
+      const w = wordById(wid);
+      if (!w) return;
+      const text = frontOf(w);
+      if (!hasJapanese(text)) return;
+      if (!force && wid === lastSpokenWid) return;
+      lastSpokenWid = wid;
+      speak(text, "ja-JP");
+    }
 
     function resetRound() {
       queueIds = shuffleArr(unfinishedIds());
       wrongIds = [];
       roundTotal = queueIds.length;
       answeredThis = false;
+      lastSpokenWid = null;
       persist();
       draw();
     }
@@ -908,6 +994,7 @@ window.FlashcardsView = (function () {
       wrongIds = [];
       roundTotal = queueIds.length;
       answeredThis = false;
+      lastSpokenWid = null;
       persist();
       draw();
     }
@@ -1004,6 +1091,7 @@ window.FlashcardsView = (function () {
         <div class="fc-toolbar fc-toolbar-sticky">
           <label class="fc-toggle"><input type="checkbox" data-opt="swap" ${state.learnOpts.swap ? "checked" : ""}/> สลับด้าน</label>
           <label class="fc-toggle"><input type="checkbox" data-opt="starredOnly" ${state.learnOpts.starredOnly ? "checked" : ""}/> ดาวเท่านั้น</label>
+          <label class="fc-toggle"><input type="checkbox" data-opt="autoSpeak" ${state.learnOpts.autoSpeak ? "checked" : ""}/> 🔊 อ่านอัตโนมัติ</label>
         </div>
       `;
     }
@@ -1014,6 +1102,12 @@ window.FlashcardsView = (function () {
           const opt = cb.dataset.opt;
           if (opt === "starredOnly") {
             resetRound();
+          } else if (opt === "autoSpeak") {
+            if (!cb.checked) {
+              window.speechSynthesis && window.speechSynthesis.cancel();
+            } else {
+              maybeAutoSpeak(true);
+            }
           } else {
             // swap — same question set, just front/back swapped
             draw();
@@ -1137,6 +1231,8 @@ window.FlashcardsView = (function () {
       answeredThis = false;
       clearAutoAdvance();
       root.querySelector("#speakBtn").addEventListener("click", () => speak(frontOf(cur)));
+
+      maybeAutoSpeak();
 
       const choiceBtns = root.querySelectorAll(".choice");
       const nextBtn = root.querySelector("#next");
