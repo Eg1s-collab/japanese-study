@@ -1123,6 +1123,15 @@ h3 { margin: 0 0 6px; font-size: 16px; }
 .fc-chunk-grid {
   display: flex; flex-wrap: wrap; gap: 8px;
   margin-top: 10px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding-right: 4px;
+  -webkit-overflow-scrolling: touch;
+}
+.fc-chunk-grid::-webkit-scrollbar { width: 6px; }
+.fc-chunk-grid::-webkit-scrollbar-thumb {
+  background: var(--glass-border);
+  border-radius: 3px;
 }
 .fc-chunk-chip {
   display: inline-flex; align-items: center; gap: 6px;
@@ -1190,5 +1199,16 @@ h3 { margin: 0 0 6px; font-size: 16px; }
 @media (max-width: 600px) {
   .fc-mode-row .btn-row { width: 100%; justify-content: flex-end; }
   .fc-chunk-row { flex-direction: column; align-items: stretch; }
+  .fc-chunk-grid {
+    max-height: 160px;
+    gap: 6px;
+  }
+  .fc-chunk-chip {
+    padding: 5px 10px;
+    font-size: 12px;
+    gap: 5px;
+  }
+  .fc-chunk-chip .fc-chunk-range { font-size: 10px; }
+  .fc-chunk-stat { font-size: 9px; }
 }
 
