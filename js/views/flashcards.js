@@ -260,11 +260,27 @@ window.FlashcardsView = (function () {
         `<option value="${n}" ${deck.chunkSize === n ? "selected" : ""}>${n} คำ/ชุด</option>`
       ).join("");
       const selectedSet = new Set(FS().selectedChunkIndices(deck));
+      const seenSet = new Set(deck.progress.cards.seenIds || []);
+      const doneSet = new Set(deck.progress.learn.completedIds || []);
       const chunkChips = deck.chunkSize ? Array.from({ length: chunkTotal }, (_, i) => {
         const from = i * deck.chunkSize + 1;
         const to = Math.min(total, (i + 1) * deck.chunkSize);
+        const chunkWords = deck.words.slice(i * deck.chunkSize, (i + 1) * deck.chunkSize);
+        const cardsSeen = chunkWords.filter((w) => seenSet.has(w.id)).length;
+        const learnDone = chunkWords.filter((w) => doneSet.has(w.id)).length;
+        const cardsFinished = chunkWords.length > 0 && cardsSeen === chunkWords.length;
+        const learnFinished = chunkWords.length > 0 && learnDone === chunkWords.length;
         const on = selectedSet.has(i);
-        return `<button class="fc-chunk-chip ${on ? "is-on" : ""}" data-chunk="${i}" aria-pressed="${on}">ชุด ${i + 1}<span class="fc-chunk-range">${from}-${to}</span></button>`;
+        const allDone = cardsFinished && learnFinished;
+        const statusBadges = [
+          `<span class="fc-chunk-stat ${cardsFinished ? "done" : ""}" title="Flash Cards: ${cardsSeen}/${chunkWords.length}">📇${cardsFinished ? "✓" : ""}</span>`,
+          `<span class="fc-chunk-stat ${learnFinished ? "done" : ""}" title="Learn: ${learnDone}/${chunkWords.length}">🎯${learnFinished ? "✓" : ""}</span>`
+        ].join("");
+        return `<button class="fc-chunk-chip ${on ? "is-on" : ""} ${allDone ? "all-done" : ""}" data-chunk="${i}" aria-pressed="${on}">
+          <span class="fc-chunk-title">ชุด ${i + 1}</span>
+          <span class="fc-chunk-range">${from}-${to}</span>
+          <span class="fc-chunk-status">${statusBadges}</span>
+        </button>`;
       }).join("") : "";
 
       root.innerHTML = `

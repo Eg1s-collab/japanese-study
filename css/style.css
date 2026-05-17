@@ -1142,8 +1142,29 @@ h3 { margin: 0 0 6px; font-size: 16px; }
   border-color: var(--accent-border);
   color: var(--accent);
 }
+.fc-chunk-chip.all-done {
+  border-color: var(--ok);
+  background: var(--ok-soft);
+}
+.fc-chunk-chip.all-done.is-on {
+  background: linear-gradient(135deg, var(--ok-soft), var(--accent-soft));
+  border-color: var(--ok);
+}
 .fc-chunk-chip .fc-chunk-range { color: var(--muted); font-size: 11px; }
 .fc-chunk-chip.is-on .fc-chunk-range { color: var(--accent); opacity: .8; }
+.fc-chunk-status { display: inline-flex; gap: 4px; margin-left: 2px; }
+.fc-chunk-stat {
+  font-size: 10px;
+  opacity: .45;
+  filter: grayscale(0.7);
+  letter-spacing: -1px;
+}
+.fc-chunk-stat.done {
+  opacity: 1;
+  filter: none;
+  color: var(--ok);
+  font-weight: 700;
+}
 .fc-chunk-actions { display: flex; gap: 8px; margin-top: 10px; }
 .fc-chunk-actions .btn { padding: 4px 10px; font-size: 12px; }
 
