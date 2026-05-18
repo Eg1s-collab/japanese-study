@@ -390,6 +390,34 @@ window.FlashcardsStorage = (function () {
     }
     save(state);
   }
+  // Reset progress only for the supplied wordIds (e.g. the currently
+  // selected sub-chunk). Aggregate counters (attempts/correct) are left
+  // intact since they reflect deck-wide history.
+  function clearProgressForWords(deckId, mode, wordIds) {
+    const state = load();
+    const d = state.decks.find((x) => x.id === deckId);
+    if (!d) return;
+    ensureDeckShape(d);
+    const idSet = new Set(Array.isArray(wordIds) ? wordIds : []);
+    if (!idSet.size) return;
+    if (mode === "cards" || mode === "all") {
+      d.progress.cards.seenIds = d.progress.cards.seenIds.filter((id) => !idSet.has(id));
+      d.progress.cards.queueIds = d.progress.cards.queueIds.filter((id) => !idSet.has(id));
+      d.progress.cards.wrongIds = d.progress.cards.wrongIds.filter((id) => !idSet.has(id));
+      if (!d.progress.cards.queueIds.length && !d.progress.cards.wrongIds.length) {
+        d.progress.cards.roundTotal = 0;
+      }
+    }
+    if (mode === "learn" || mode === "all") {
+      d.progress.learn.completedIds = d.progress.learn.completedIds.filter((id) => !idSet.has(id));
+      d.progress.learn.queueIds = d.progress.learn.queueIds.filter((id) => !idSet.has(id));
+      d.progress.learn.wrongIds = d.progress.learn.wrongIds.filter((id) => !idSet.has(id));
+      if (!d.progress.learn.queueIds.length && !d.progress.learn.wrongIds.length) {
+        d.progress.learn.roundTotal = 0;
+      }
+    }
+    save(state);
+  }
   function setCardsRound(deckId, partial) {
     const state = load();
     const d = state.decks.find((x) => x.id === deckId);
@@ -436,7 +464,7 @@ window.FlashcardsStorage = (function () {
     createDeck, renameDeck, moveDeck, deleteDeck,
     addWord, updateWord, deleteWord, toggleStar,
     setChunkSize, setSelectedChunk, setSelectedChunks, chunkCount, chunkWords, chunkRange, selectedChunkIndices,
-    markCardSeen, unmarkCardSeen, recordLearnAttempt, markLearnCompleted, clearProgress,
+    markCardSeen, unmarkCardSeen, recordLearnAttempt, markLearnCompleted, clearProgress, clearProgressForWords,
     setCardsRound, setLearnRound,
     parseCSV, importCSV,
     getDeck, getFolder,

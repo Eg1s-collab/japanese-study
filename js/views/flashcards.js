@@ -255,6 +255,14 @@ window.FlashcardsView = (function () {
       const pctL = poolSize ? Math.round((doneInPool / poolSize) * 100) : 0;
       const cardsInFlight = (deck.progress.cards.queueIds || []).length + (deck.progress.cards.wrongIds || []).length;
       const learnInFlight = (deck.progress.learn.queueIds || []).length + (deck.progress.learn.wrongIds || []).length;
+      const cardsAllSeen = (deck.progress.cards.seenIds || []).length;
+      const learnAllDone = (deck.progress.learn.completedIds || []).length;
+      const learnAttempts = deck.progress.learn.attempts || 0;
+      const isChunked = !!deck.chunkSize;
+      const resetCardsDisabled = seenInPool === 0 && cardsInFlight === 0;
+      const resetCardsAllDisabled = cardsAllSeen === 0 && cardsInFlight === 0;
+      const resetLearnDisabled = doneInPool === 0 && learnInFlight === 0;
+      const resetLearnAllDisabled = learnAllDone === 0 && learnAttempts === 0 && learnInFlight === 0;
 
       const chunkOpts = [25, 50, 100].map((n) =>
         `<option value="${n}" ${deck.chunkSize === n ? "selected" : ""}>${n} คำ/ชุด</option>`
@@ -323,7 +331,8 @@ window.FlashcardsView = (function () {
             </div>
             <div class="btn-row" style="margin:0;">
               <button class="btn primary" id="goCards">${cardsInFlight > 0 || (seenInPool > 0 && seenInPool < poolSize) ? "ทำต่อ" : "เริ่ม"}</button>
-              <button class="btn ghost" id="resetCards" ${seenInPool === 0 && cardsInFlight === 0 ? "disabled" : ""}>รีเซ็ต</button>
+              <button class="btn ghost" id="resetCards" ${resetCardsDisabled ? "disabled" : ""}>${isChunked ? "รีเซ็ตชุดย่อย" : "รีเซ็ต"}</button>
+              ${isChunked ? `<button class="btn ghost" id="resetCardsAll" ${resetCardsAllDisabled ? "disabled" : ""}>รีเซ็ตทั้งหมด</button>` : ""}
             </div>
           </div>
           <hr style="border:none; border-top:1px solid var(--line); margin:14px 0;" />
@@ -335,7 +344,8 @@ window.FlashcardsView = (function () {
             </div>
             <div class="btn-row" style="margin:0;">
               <button class="btn primary" id="goLearn">${learnInFlight > 0 || (doneInPool > 0 && doneInPool < poolSize) ? "ทำต่อ" : "เริ่ม"}</button>
-              <button class="btn ghost" id="resetLearn" ${doneInPool === 0 && deck.progress.learn.attempts === 0 && learnInFlight === 0 ? "disabled" : ""}>รีเซ็ต</button>
+              <button class="btn ghost" id="resetLearn" ${resetLearnDisabled ? "disabled" : ""}>${isChunked ? "รีเซ็ตชุดย่อย" : "รีเซ็ต"}</button>
+              ${isChunked ? `<button class="btn ghost" id="resetLearnAll" ${resetLearnAllDisabled ? "disabled" : ""}>รีเซ็ตทั้งหมด</button>` : ""}
             </div>
           </div>
         </div>
@@ -476,7 +486,20 @@ window.FlashcardsView = (function () {
         state.screen = "cards"; refresh(root);
       });
       root.querySelector("#resetCards").addEventListener("click", () => {
-        if (confirm("รีเซ็ตความคืบหน้า Flash Cards ของชุดคำนี้?")) {
+        const dk = FS().getDeck(deck.id);
+        const scoped = !!dk.chunkSize;
+        const msg = scoped
+          ? "รีเซ็ตความคืบหน้า Flash Cards เฉพาะชุดย่อยที่เลือก?"
+          : "รีเซ็ตความคืบหน้า Flash Cards ของชุดคำนี้?";
+        if (confirm(msg)) {
+          const ids = FS().chunkWords(dk).map((w) => w.id);
+          FS().clearProgressForWords(deck.id, "cards", ids);
+          draw();
+        }
+      });
+      const resetCardsAllBtn = root.querySelector("#resetCardsAll");
+      if (resetCardsAllBtn) resetCardsAllBtn.addEventListener("click", () => {
+        if (confirm("รีเซ็ตความคืบหน้า Flash Cards ของชุดคำนี้ทั้งหมด (ทุกชุดย่อย)?")) {
           FS().clearProgress(deck.id, "cards"); draw();
         }
       });
@@ -485,7 +508,20 @@ window.FlashcardsView = (function () {
         state.screen = "learn"; refresh(root);
       });
       root.querySelector("#resetLearn").addEventListener("click", () => {
-        if (confirm("รีเซ็ตความคืบหน้า Learn ของชุดคำนี้?")) {
+        const dk = FS().getDeck(deck.id);
+        const scoped = !!dk.chunkSize;
+        const msg = scoped
+          ? "รีเซ็ตความคืบหน้า Learn เฉพาะชุดย่อยที่เลือก?"
+          : "รีเซ็ตความคืบหน้า Learn ของชุดคำนี้?";
+        if (confirm(msg)) {
+          const ids = FS().chunkWords(dk).map((w) => w.id);
+          FS().clearProgressForWords(deck.id, "learn", ids);
+          draw();
+        }
+      });
+      const resetLearnAllBtn = root.querySelector("#resetLearnAll");
+      if (resetLearnAllBtn) resetLearnAllBtn.addEventListener("click", () => {
+        if (confirm("รีเซ็ตความคืบหน้า Learn ของชุดคำนี้ทั้งหมด (ทุกชุดย่อย รวมตัวนับด้วย)?")) {
           FS().clearProgress(deck.id, "learn"); draw();
         }
       });
