@@ -1151,13 +1151,20 @@ h3 { margin: 0 0 6px; font-size: 16px; }
   border-color: var(--accent-border);
   color: var(--accent);
 }
+/* "All done" is signalled by dimming (a "consumed/archived" look) plus the
+ * green ✓ on the per-mode status badges below — chosen so the cue doesn't
+ * clash with `is-on`'s accent color (the accent can itself be green in the
+ * matcha theme). When a done chunk is also selected, `is-on` wins. */
 .fc-chunk-chip.all-done {
-  border-color: var(--ok);
-  background: var(--ok-soft);
+  color: var(--muted);
+  opacity: 0.55;
+  border-style: dashed;
 }
+.fc-chunk-chip.all-done:hover { opacity: 0.85; }
 .fc-chunk-chip.all-done.is-on {
-  background: linear-gradient(135deg, var(--ok-soft), var(--accent-soft));
-  border-color: var(--ok);
+  color: var(--accent);
+  opacity: 1;
+  border-style: solid;
 }
 .fc-chunk-chip .fc-chunk-range { color: var(--muted); font-size: 11px; }
 .fc-chunk-chip.is-on .fc-chunk-range { color: var(--accent); opacity: .8; }
@@ -1212,3 +1219,69 @@ h3 { margin: 0 0 6px; font-size: 16px; }
   .fc-chunk-stat { font-size: 9px; }
 }
 
+/* ===== Learn: on-fire streak banner ===== */
+@keyframes fc-fire-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 14px rgba(255, 138, 42, 0.55),
+      inset 0 0 10px rgba(255, 200, 90, 0.25);
+  }
+  50% {
+    box-shadow:
+      0 0 28px rgba(255, 138, 42, 0.95),
+      inset 0 0 18px rgba(255, 200, 90, 0.55);
+  }
+}
+@keyframes fc-flame-flicker {
+  0%   { transform: translateY(0) scale(1)    rotate(-3deg); }
+  50%  { transform: translateY(-2px) scale(1.18) rotate(3deg); }
+  100% { transform: translateY(0) scale(1.05) rotate(-2deg); }
+}
+@keyframes fc-fire-ignite {
+  0%   { transform: scale(0.6); opacity: 0; }
+  60%  { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1);    opacity: 1; }
+}
+.fc-on-fire {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  margin: 12px 0;
+  padding: 10px 16px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(255, 90, 30, 0.22), rgba(255, 200, 60, 0.22));
+  border: 1px solid rgba(255, 138, 42, 0.75);
+  color: #ffcf94;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-shadow: 0 0 10px rgba(255, 138, 42, 0.55);
+  animation: fc-fire-pulse 1.4s ease-in-out infinite;
+}
+.fc-on-fire.is-igniting {
+  animation: fc-fire-ignite 0.55s cubic-bezier(0.16, 1.2, 0.34, 1) 1, fc-fire-pulse 1.4s ease-in-out 0.55s infinite;
+}
+.fc-on-fire-flame {
+  display: inline-block;
+  font-size: 20px;
+  filter: drop-shadow(0 0 6px rgba(255, 138, 42, 0.7));
+  animation: fc-flame-flicker 0.55s ease-in-out infinite alternate;
+}
+.fc-on-fire-flame:last-child {
+  animation-duration: 0.7s;
+  animation-direction: alternate-reverse;
+}
+.card.is-on-fire {
+  border-color: rgba(255, 138, 42, 0.55);
+  box-shadow:
+    0 0 0 1px rgba(255, 138, 42, 0.35),
+    0 8px 28px rgba(255, 138, 42, 0.18);
+}
+
+/* Review-pass cue: when a Learn batch is replaying only the wrong words,
+ * the question gets a yellow background highlight. Avoids pushing layout
+ * (no banner) but still gives a clear "this is a retry" signal. */
+.fc-learn-q.is-review {
+  background: rgba(251, 191, 36, 0.16);
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  border-radius: 12px;
+  padding: 8px 14px;
+  box-shadow: 0 0 18px rgba(251, 191, 36, 0.18) inset;
+}

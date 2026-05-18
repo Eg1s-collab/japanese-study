@@ -347,7 +347,7 @@ window.FlashcardsStorage = (function () {
     d.progress.cards.seenIds = d.progress.cards.seenIds.filter((id) => id !== wordId);
     if (d.progress.cards.seenIds.length !== before) save(state);
   }
-  function recordLearnAttempt(deckId, wordId, isCorrect) {
+  function recordLearnAttempt(deckId, wordId, isCorrect, opts) {
     const state = load();
     const d = state.decks.find((x) => x.id === deckId);
     if (!d) return;
@@ -355,11 +355,27 @@ window.FlashcardsStorage = (function () {
     d.progress.learn.attempts++;
     if (isCorrect) {
       d.progress.learn.correct++;
-      if (!d.progress.learn.completedIds.includes(wordId)) {
+      const markCompleted = !opts || opts.markCompleted !== false;
+      if (markCompleted && !d.progress.learn.completedIds.includes(wordId)) {
         d.progress.learn.completedIds.push(wordId);
       }
     }
     save(state);
+  }
+  function markLearnCompleted(deckId, wordIds) {
+    const state = load();
+    const d = state.decks.find((x) => x.id === deckId);
+    if (!d) return;
+    ensureDeckShape(d);
+    const list = Array.isArray(wordIds) ? wordIds : [wordIds];
+    let changed = false;
+    for (const id of list) {
+      if (id && !d.progress.learn.completedIds.includes(id)) {
+        d.progress.learn.completedIds.push(id);
+        changed = true;
+      }
+    }
+    if (changed) save(state);
   }
   function clearProgress(deckId, mode) {
     const state = load();
@@ -420,7 +436,7 @@ window.FlashcardsStorage = (function () {
     createDeck, renameDeck, moveDeck, deleteDeck,
     addWord, updateWord, deleteWord, toggleStar,
     setChunkSize, setSelectedChunk, setSelectedChunks, chunkCount, chunkWords, chunkRange, selectedChunkIndices,
-    markCardSeen, unmarkCardSeen, recordLearnAttempt, clearProgress,
+    markCardSeen, unmarkCardSeen, recordLearnAttempt, markLearnCompleted, clearProgress,
     setCardsRound, setLearnRound,
     parseCSV, importCSV,
     getDeck, getFolder,

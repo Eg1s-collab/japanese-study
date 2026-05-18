@@ -924,15 +924,23 @@ window.FlashcardsView = (function () {
   }
 
   /* ===================== LEARN MODE (4-choice) =====================
-   * Round-based MCQ with persisted queue. Wrong answers go to
-   * wrongIds (next round's queue) instead of being re-pushed into
-   * the current queue, so the round progress bar can't exceed 100%.
-   * queueIds + wrongIds + roundTotal are saved to storage so leaving
-   * mid-round and returning resumes from the same position.
+   * Batched MCQ: the unfinished queue is split into batches of BATCH_SIZE
+   * words. Each batch runs in passes: pass 1 covers all 10, then any
+   * subsequent pass cycles ONLY the words the user got wrong in the
+   * previous pass. The batch is complete (and its 10 words committed to
+   * completedIds) once a pass finishes with zero wrong answers. A streak
+   * > FIRE_THRESHOLD lights up an on-fire banner that persists until the
+   * user misses.
+   *
+   * queueIds is persisted; batch state (originals, pass queue, accumulators,
+   * streak) is in-memory only — leaving mid-batch restarts the batch.
    */
   function renderLearn() {
     const deck = FS().getDeck(state.deckId);
     if (!deck) { state.screen = "home"; return renderHome(); }
+
+    const BATCH_SIZE = 10;
+    const FIRE_THRESHOLD = 15;
 
     const root = document.createElement("div");
 
@@ -959,32 +967,60 @@ window.FlashcardsView = (function () {
       const done = new Set(d.progress.learn.completedIds || []);
       const poolIds = poolIdSet();
       let q = (d.progress.learn.queueIds || []).filter((id) => poolIds.has(id) && !done.has(id));
-      let w = (d.progress.learn.wrongIds || []).filter((id) => poolIds.has(id) && !done.has(id));
-      let total = d.progress.learn.roundTotal || 0;
-      if (q.length === 0 && w.length === 0) {
+      // Migrate any legacy wrongIds into the master queue, then drop them.
+      const legacyWrong = (d.progress.learn.wrongIds || []).filter((id) => poolIds.has(id) && !done.has(id) && !q.includes(id));
+      if (legacyWrong.length) q = q.concat(legacyWrong);
+      if (q.length === 0) {
         q = shuffleArr(unfinishedIds());
-        total = q.length;
-        FS().setLearnRound(deck.id, { queueIds: q, wrongIds: [], roundTotal: total });
-      } else if (total < q.length + w.length) {
-        total = q.length + w.length;
       }
-      return { queueIds: q, wrongIds: w, roundTotal: total };
+      FS().setLearnRound(deck.id, { queueIds: q, wrongIds: [], roundTotal: q.length });
+      return { queueIds: q };
     }
 
-    let { queueIds, wrongIds, roundTotal } = loadRound();
+    let { queueIds } = loadRound();
+    // Original IDs of the current batch (the 10 we're committing on success).
+    let batchOriginalIds = [];
+    // The current pass's queue — pass 1 = all 10, later passes = only the
+    // words that were wrong in the previous pass.
+    let batchQueue = [];
+    let batchPos = 0;
+    // Words ever answered correctly in this batch (across passes).
+    let batchCorrectIds = new Set();
+    // Words wrong in the current pass; resets each pass.
+    let batchWrongIdsThisPass = new Set();
+    let passNumber = 1;
+    let streak = 0;
+    let fireJustLit = false;
     let answeredThis = false;
     let autoAdvanceTimer = null;
     let lastSpokenWid = null;
 
+    function startNewBatch() {
+      const size = Math.min(BATCH_SIZE, queueIds.length);
+      batchOriginalIds = queueIds.slice(0, size);
+      batchQueue = batchOriginalIds.slice();
+      batchPos = 0;
+      batchCorrectIds = new Set();
+      batchWrongIdsThisPass = new Set();
+      passNumber = 1;
+    }
+    function resetBatchState() {
+      batchOriginalIds = [];
+      batchQueue = [];
+      batchPos = 0;
+      batchCorrectIds = new Set();
+      batchWrongIdsThisPass = new Set();
+      passNumber = 1;
+    }
     function persist() {
-      FS().setLearnRound(deck.id, { queueIds, wrongIds, roundTotal });
+      FS().setLearnRound(deck.id, { queueIds, wrongIds: [], roundTotal: queueIds.length });
     }
     function clearAutoAdvance() {
       if (autoAdvanceTimer) { clearTimeout(autoAdvanceTimer); autoAdvanceTimer = null; }
     }
     function maybeAutoSpeak(force) {
       if (!state.learnOpts.autoSpeak) return;
-      const wid = queueIds[0];
+      const wid = batchQueue[batchPos];
       if (!wid) return;
       const w = wordById(wid);
       if (!w) return;
@@ -997,18 +1033,9 @@ window.FlashcardsView = (function () {
 
     function resetRound() {
       queueIds = shuffleArr(unfinishedIds());
-      wrongIds = [];
-      roundTotal = queueIds.length;
-      answeredThis = false;
-      lastSpokenWid = null;
-      persist();
-      draw();
-    }
-
-    function startNextRound() {
-      queueIds = shuffleArr(wrongIds);
-      wrongIds = [];
-      roundTotal = queueIds.length;
+      resetBatchState();
+      streak = 0;
+      fireJustLit = false;
       answeredThis = false;
       lastSpokenWid = null;
       persist();
@@ -1162,73 +1189,79 @@ window.FlashcardsView = (function () {
         bindHeader(); bindToolbar(); return;
       }
 
-      // End of round / end of all
+      // End of all unfinished words in pool
       if (queueIds.length === 0) {
-        const allDone = wrongIds.length === 0;
         root.innerHTML = `
           ${renderHeader()}
           ${renderToolbar()}
           <div class="qprog">รวม ${doneInPool} / ${total} · ตอบไป ${attempts} ครั้ง · ถูก ${correct}</div>
-          <div class="progress ${allDone ? "ok" : ""}"><div class="bar" style="width:${overallPct}%"></div></div>
+          <div class="progress ok"><div class="bar" style="width:${overallPct}%"></div></div>
           <div class="score-card">
             <div>
-              <h2 style="margin:0;">${allDone ? "เก่งมาก! ตอบได้ครบทุกคำแล้ว" : "จบรอบนี้แล้ว"}</h2>
-              <p class="subtle">${allDone
-                ? "เรียน " + total + " คำสำเร็จ"
-                : "ยังต้องตอบใหม่อีก " + wrongIds.length + " คำ"}</p>
+              <h2 style="margin:0;">เก่งมาก! ตอบได้ครบทุกคำแล้ว</h2>
+              <p class="subtle">เรียน ${total} คำสำเร็จ</p>
             </div>
-            <div class="score-num">${allDone ? "✓" : wrongIds.length}</div>
+            <div class="score-num">✓</div>
           </div>
           <div class="btn-row">
-            ${allDone
-              ? `<button class="btn primary" id="restart">เริ่มชุดย่อยนี้ใหม่</button>`
-              : `<button class="btn primary" id="nextRound">ตอบใหม่เฉพาะ ${wrongIds.length} คำที่ผิด →</button>`}
+            <button class="btn primary" id="restart">เริ่มชุดย่อยนี้ใหม่</button>
             <button class="btn ghost" id="back2">กลับสู่ชุดคำ</button>
           </div>
         `;
         bindHeader(); bindToolbar();
-        if (!allDone) {
-          root.querySelector("#nextRound").addEventListener("click", startNextRound);
-        } else {
-          root.querySelector("#restart").addEventListener("click", () => {
-            const ids = pool.map((w) => w.id);
-            const fullState = FS().load();
-            const d = fullState.decks.find((x) => x.id === deck.id);
-            if (d) {
-              d.progress.learn.completedIds = d.progress.learn.completedIds.filter((id) => !ids.includes(id));
-              d.progress.learn.queueIds = [];
-              d.progress.learn.wrongIds = [];
-              d.progress.learn.roundTotal = 0;
-              FS().save(fullState);
-            }
-            ({ queueIds, wrongIds, roundTotal } = loadRound());
-            answeredThis = false;
-            draw();
-          });
-        }
+        root.querySelector("#restart").addEventListener("click", () => {
+          const ids = pool.map((w) => w.id);
+          const fullState = FS().load();
+          const d = fullState.decks.find((x) => x.id === deck.id);
+          if (d) {
+            d.progress.learn.completedIds = d.progress.learn.completedIds.filter((id) => !ids.includes(id));
+            d.progress.learn.queueIds = [];
+            d.progress.learn.wrongIds = [];
+            d.progress.learn.roundTotal = 0;
+            FS().save(fullState);
+          }
+          ({ queueIds } = loadRound());
+          resetBatchState();
+          streak = 0;
+          fireJustLit = false;
+          answeredThis = false;
+          draw();
+        });
         root.querySelector("#back2").addEventListener("click", goBack);
         return;
       }
 
-      const cur = wordById(queueIds[0]);
+      // Snapshot a new batch (pass 1) when the previous one is done.
+      if (batchQueue.length === 0) startNewBatch();
+      // Clamp in case the queue shrank under us (e.g. word deletion).
+      if (batchPos >= batchQueue.length) batchPos = 0;
+      const cur = wordById(batchQueue[batchPos]);
       if (!cur) {
-        queueIds.shift();
-        persist();
-        return draw();
+        batchQueue.splice(batchPos, 1);
+        // If pass becomes empty, treat as pass-ended (advance handles next pass / next batch).
+        return advance();
       }
       const choices = makeChoices(cur);
-      const roundDone = Math.max(0, roundTotal - queueIds.length);
-      const roundPct = roundTotal ? Math.round((roundDone / roundTotal) * 100) : 0;
+      const passSize = batchQueue.length;
+      const batchSize = batchOriginalIds.length;
+      const overallSeen = doneInPool;
+      const showFireBanner = streak > FIRE_THRESHOLD;
+      const isReviewPass = passNumber > 1;
+      const fireClasses = `fc-on-fire${fireJustLit ? " is-igniting" : ""}`;
+      const passLabel = isReviewPass
+        ? `ทบทวนคำที่ผิด (รอบ ${passNumber}): ${batchPos + 1} / ${passSize}`
+        : `ชุดนี้: ${batchPos + 1} / ${batchSize}`;
 
       root.innerHTML = `
         ${renderHeader()}
         ${renderToolbar()}
-        <div class="qprog">รอบนี้: ${roundDone} / ${roundTotal}${wrongIds.length ? ` · ผิด ${wrongIds.length}` : ""} · รวม ${doneInPool} / ${total}</div>
-        <div class="progress"><div class="bar" style="width:${roundPct}%"></div></div>
+        ${showFireBanner ? `<div class="${fireClasses}"><span class="fc-on-fire-flame">🔥</span><span>On fire! ตอบถูก ${streak} ครั้งติด</span><span class="fc-on-fire-flame">🔥</span></div>` : ""}
+        <div class="qprog">${passLabel}${batchWrongIdsThisPass.size ? ` · ผิดในรอบนี้ ${batchWrongIdsThisPass.size}` : ""} · รวม ${overallSeen} / ${total}</div>
+        <div class="progress"><div class="bar" style="width:${passSize ? Math.round((batchPos / passSize) * 100) : 0}%"></div></div>
 
-        <div class="card">
+        <div class="card${showFireBanner ? " is-on-fire" : ""}">
           <div class="fc-learn-prompt">
-            <div class="fc-learn-q">${escapeHtml(frontOf(cur))}</div>
+            <div class="fc-learn-q${isReviewPass ? " is-review" : ""}">${escapeHtml(frontOf(cur))}</div>
             <button class="btn ghost fc-speak" id="speakBtn" title="ออกเสียง">🔊</button>
           </div>
           <div id="choices">
@@ -1243,6 +1276,9 @@ window.FlashcardsView = (function () {
         </div>
       `;
 
+      // One-shot ignition is consumed on render; the persistent banner remains.
+      if (fireJustLit) fireJustLit = false;
+
       bindHeader(); bindToolbar();
       answeredThis = false;
       clearAutoAdvance();
@@ -1254,6 +1290,24 @@ window.FlashcardsView = (function () {
       const nextBtn = root.querySelector("#next");
       function advance() {
         clearAutoAdvance();
+        // Did the user just answer the final word of this pass?
+        if (batchPos >= batchQueue.length) {
+          if (batchWrongIdsThisPass.size === 0) {
+            // Pass clean — entire batch complete. Commit and load next batch.
+            const ids = batchOriginalIds.slice();
+            if (ids.length) FS().markLearnCompleted(deck.id, ids);
+            queueIds = queueIds.slice(batchOriginalIds.length);
+            resetBatchState();
+            persist();
+          } else {
+            // Pass had wrongs — next pass cycles only those wrong words.
+            // The yellow question text in the review pass signals the state.
+            batchQueue = shuffleArr(Array.from(batchWrongIdsThisPass));
+            batchWrongIdsThisPass = new Set();
+            batchPos = 0;
+            passNumber += 1;
+          }
+        }
         draw();
       }
       choiceBtns.forEach((btn) => {
@@ -1267,16 +1321,24 @@ window.FlashcardsView = (function () {
             else if (b === btn) b.classList.add("wrong");
           });
           const fb = root.querySelector("#fb");
-          FS().recordLearnAttempt(deck.id, cur.id, wasCorrect);
+          FS().recordLearnAttempt(deck.id, cur.id, wasCorrect, { markCompleted: false });
           if (wasCorrect) {
+            const prevStreak = streak;
+            streak += 1;
+            if (prevStreak <= FIRE_THRESHOLD && streak > FIRE_THRESHOLD) fireJustLit = true;
+            batchCorrectIds.add(cur.id);
             fb.innerHTML = `<div class="feedback ok"><strong>ถูกต้อง ✓</strong></div>`;
           } else {
+            streak = 0;
+            fireJustLit = false;
+            batchWrongIdsThisPass.add(cur.id);
+            // If they got this word right earlier in the batch, undo that
+            // — they have to get it right in this pass to count.
+            batchCorrectIds.delete(cur.id);
             fb.innerHTML = `<div class="feedback bad"><strong>ยังไม่ถูก ✗</strong>
-              <div style="margin-top:4px;">เฉลย: ${escapeHtml(backOf(cur))} — เก็บไว้ตอบใหม่ในรอบหน้า</div></div>`;
-            wrongIds.push(cur.id);
+              <div style="margin-top:4px;">เฉลย: ${escapeHtml(backOf(cur))} — จะถูกทบทวนอีกครั้งหลังตอบครบรอบนี้</div></div>`;
           }
-          queueIds.shift();
-          persist();
+          batchPos += 1;
           nextBtn.style.display = "inline-block";
           autoAdvanceTimer = setTimeout(advance, wasCorrect ? 700 : 1800);
         });
