@@ -33,11 +33,22 @@ window.FlashcardsView = (function () {
   function hasJapanese(s) {
     return /[\u3040-\u30ff\u3400-\u9fff\uff66-\uff9f]/.test(String(s || ""));
   }
+  // For Japanese entries formatted like "会う(あう)" or "明日(あした, あす)",
+  // pull only what's inside the parentheses — that's the reading we want
+  // the TTS voice to pronounce. First reading wins when several are listed.
+  function readingFor(text) {
+    const s = String(text || "");
+    const m = s.match(/[(（]([^()（）]+)[)）]/);
+    if (!m) return s;
+    const inside = m[1].split(/[,、，;；/]/)[0].trim();
+    return inside || s;
+  }
   function speak(text, lang) {
     if (!("speechSynthesis" in window)) return;
     try {
       window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(String(text || ""));
+      const spoken = hasJapanese(text) ? readingFor(text) : String(text || "");
+      const u = new SpeechSynthesisUtterance(spoken);
       u.lang = lang || (hasJapanese(text) ? "ja-JP" : "th-TH");
       u.rate = 0.95;
       window.speechSynthesis.speak(u);
