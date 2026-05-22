@@ -1660,3 +1660,193 @@ h3 { margin: 0 0 6px; font-size: 16px; }
     justify-content: flex-end;
   }
 }
+
+/* ---------- Particle drill (คำช่วยเฉพาะจุด) ---------- */
+.pt-section-title { margin: 0 0 10px 0; font-size: 14px; color: var(--muted); font-weight: 600; }
+
+.pt-chips {
+  display: flex; flex-wrap: wrap; gap: 8px;
+}
+.pt-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 14px; border-radius: 999px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  color: var(--ink);
+  font-family: inherit;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, transform .1s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.pt-chip:hover { background: var(--glass-bg-strong); border-color: var(--accent); }
+.pt-chip:active { transform: translateY(1px); }
+.pt-chip.on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-softer);
+}
+.pt-chip-jp {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+}
+.pt-chip.on .pt-chip-jp { color: var(--accent-strong); }
+.pt-chip-count {
+  font-size: 11px;
+  color: var(--muted);
+}
+.pt-chip.on .pt-chip-count { color: var(--accent); }
+
+.pt-controls .inline-field {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  padding: 4px 10px 4px 12px;
+  border-radius: 10px;
+  font-size: 13px; color: var(--muted);
+}
+.pt-controls .inline-field input[type=number] {
+  width: 64px;
+  padding: 6px 8px;
+  margin-left: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--ink);
+  font-size: 14px;
+  font-family: inherit;
+  -moz-appearance: textfield;
+}
+.pt-controls .inline-field input[type=number]::-webkit-outer-spin-button,
+.pt-controls .inline-field input[type=number]::-webkit-inner-spin-button {
+  -webkit-appearance: none; margin: 0;
+}
+
+.pt-q {
+  font-size: 20px; line-height: 1.6;
+  margin: 0 0 6px 0;
+}
+.pt-hint { margin: 0 0 14px 0; font-size: 13px; }
+.pt-input {
+  text-align: center;
+  font-size: 22px;
+  letter-spacing: 0.04em;
+  padding: 14px;
+}
+
+.pt-keypad {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+  margin: 12px 0;
+}
+.pt-key {
+  padding: 14px 0;
+  font-size: 22px;
+  font-family: inherit;
+  font-weight: 600;
+  color: var(--ink);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  border-radius: 12px;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
+  transition: background .15s ease, border-color .15s ease, transform .1s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.pt-key:hover { background: var(--glass-bg-strong); border-color: var(--accent); }
+.pt-key:active { transform: translateY(1px); }
+.pt-key-bksp { font-size: 18px; color: var(--muted); }
+
+/* base daily-pill (no modifier) — used by particle source tag */
+.qmeta-right .daily-pill {
+  background: var(--bg-elevated);
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+/* ---------- Particle guide cards (อธิบายว่า "ทำไม" ใช้คำช่วยตัวนี้) ---------- */
+.pt-guides {
+  display: grid;
+  gap: 8px;
+}
+.pt-guide {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+.pt-guide[open] {
+  border-color: var(--accent-border);
+  background: linear-gradient(180deg, var(--accent-softer), rgba(0, 0, 0, 0.18));
+}
+.pt-guide > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 12px 14px;
+  display: flex; align-items: center; gap: 12px;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.pt-guide > summary::-webkit-details-marker { display: none; }
+.pt-guide > summary::after {
+  content: "›";
+  margin-left: auto;
+  font-size: 22px;
+  color: var(--muted);
+  transform: rotate(90deg);
+  transition: transform .15s ease;
+}
+.pt-guide[open] > summary::after { transform: rotate(270deg); color: var(--accent); }
+.pt-guide-jp {
+  font-size: 22px; font-weight: 700; color: var(--ink);
+  display: inline-flex; align-items: baseline; gap: 6px;
+  min-width: 56px;
+}
+.pt-guide[open] .pt-guide-jp { color: var(--accent-strong); }
+.pt-guide-pron {
+  font-size: 12px; font-weight: 500; color: var(--muted);
+}
+.pt-guide-tag {
+  font-size: 13px; color: var(--muted);
+  flex: 1; min-width: 0;
+}
+.pt-guide-sum {
+  margin: 0 14px 8px 14px;
+  font-size: 13px; color: var(--ink);
+  opacity: .9;
+  line-height: 1.55;
+}
+.pt-use-list {
+  margin: 0; padding: 0 14px 12px 14px;
+  list-style: none;
+  display: grid; gap: 8px;
+}
+.pt-use-list > li {
+  border-left: 2px solid var(--accent-border);
+  padding: 2px 0 2px 10px;
+}
+.pt-use-label {
+  display: inline-block;
+  font-size: 12px; font-weight: 600;
+  color: var(--accent); letter-spacing: .02em;
+}
+.pt-use-ex {
+  margin-top: 2px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.pt-use-jp { color: var(--ink); }
+.pt-use-jp b {
+  color: var(--accent-strong);
+  font-weight: 700;
+  background: var(--accent-softer);
+  padding: 0 3px; border-radius: 4px;
+}
+.pt-use-th { color: var(--muted); font-size: 13px; }
+
+@media (max-width: 540px) {
+  .pt-keypad { grid-template-columns: repeat(4, 1fr); }
+  .pt-chip { flex: 1 1 calc(50% - 8px); justify-content: center; }
+}

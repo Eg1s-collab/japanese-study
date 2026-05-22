@@ -64,6 +64,8 @@
         state.quizUnit = unitId;
         render();
       });
+    } else if (state.tab === "particles") {
+      node = window.ParticlesView.render();
     } else if (state.tab === "conjugation") {
       // Conjugation is not level-segmented (shared pool across all levels).
       node = window.ConjugationView.render();
