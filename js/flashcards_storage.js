@@ -46,6 +46,10 @@ window.FlashcardsStorage = (function () {
     if (!Array.isArray(d.progress.cards.seenIds)) d.progress.cards.seenIds = [];
     if (!Array.isArray(d.progress.cards.queueIds)) d.progress.cards.queueIds = [];
     if (!Array.isArray(d.progress.cards.wrongIds)) d.progress.cards.wrongIds = [];
+    // Sticky set of words the user has marked "ยังไม่ได้" on a flash card
+    // (across sessions), cleared only when the same word is later marked
+    // "ผ่าน". Used by Daily Words to prioritize previously-uncertain items.
+    if (!Array.isArray(d.progress.cards.stillUnknownIds)) d.progress.cards.stillUnknownIds = [];
     if (typeof d.progress.cards.roundTotal !== "number") d.progress.cards.roundTotal = 0;
     if (!d.progress.learn || typeof d.progress.learn !== "object") d.progress.learn = {};
     if (!Array.isArray(d.progress.learn.completedIds)) d.progress.learn.completedIds = [];
@@ -333,10 +337,29 @@ window.FlashcardsStorage = (function () {
     const d = state.decks.find((x) => x.id === deckId);
     if (!d) return;
     ensureDeckShape(d);
+    let changed = false;
     if (!d.progress.cards.seenIds.includes(wordId)) {
       d.progress.cards.seenIds.push(wordId);
+      changed = true;
+    }
+    // Passing a card clears its "still unknown" tag — the user
+    // demonstrated mastery this round.
+    const before = d.progress.cards.stillUnknownIds.length;
+    d.progress.cards.stillUnknownIds = d.progress.cards.stillUnknownIds.filter((id) => id !== wordId);
+    if (d.progress.cards.stillUnknownIds.length !== before) changed = true;
+    if (changed) {
       save(state);
       if (window.FlashcardsStreak) window.FlashcardsStreak.addCards(1);
+    }
+  }
+  function markCardUnknown(deckId, wordId) {
+    const state = load();
+    const d = state.decks.find((x) => x.id === deckId);
+    if (!d) return;
+    ensureDeckShape(d);
+    if (!d.progress.cards.stillUnknownIds.includes(wordId)) {
+      d.progress.cards.stillUnknownIds.push(wordId);
+      save(state);
     }
   }
   function unmarkCardSeen(deckId, wordId) {
@@ -390,7 +413,7 @@ window.FlashcardsStorage = (function () {
     if (!d) return;
     ensureDeckShape(d);
     if (mode === "cards" || mode === "all") {
-      d.progress.cards = { seenIds: [], queueIds: [], wrongIds: [], roundTotal: 0 };
+      d.progress.cards = { seenIds: [], queueIds: [], wrongIds: [], stillUnknownIds: [], roundTotal: 0 };
     }
     if (mode === "learn" || mode === "all") {
       d.progress.learn = { completedIds: [], queueIds: [], wrongIds: [], roundTotal: 0, attempts: 0, correct: 0 };
@@ -411,6 +434,7 @@ window.FlashcardsStorage = (function () {
       d.progress.cards.seenIds = d.progress.cards.seenIds.filter((id) => !idSet.has(id));
       d.progress.cards.queueIds = d.progress.cards.queueIds.filter((id) => !idSet.has(id));
       d.progress.cards.wrongIds = d.progress.cards.wrongIds.filter((id) => !idSet.has(id));
+      d.progress.cards.stillUnknownIds = d.progress.cards.stillUnknownIds.filter((id) => !idSet.has(id));
       if (!d.progress.cards.queueIds.length && !d.progress.cards.wrongIds.length) {
         d.progress.cards.roundTotal = 0;
       }
@@ -471,7 +495,7 @@ window.FlashcardsStorage = (function () {
     createDeck, renameDeck, moveDeck, deleteDeck,
     addWord, updateWord, deleteWord, toggleStar,
     setChunkSize, setSelectedChunk, setSelectedChunks, chunkCount, chunkWords, chunkRange, selectedChunkIndices,
-    markCardSeen, unmarkCardSeen, recordLearnAttempt, markLearnCompleted, clearProgress, clearProgressForWords,
+    markCardSeen, markCardUnknown, unmarkCardSeen, recordLearnAttempt, markLearnCompleted, clearProgress, clearProgressForWords,
     setCardsRound, setLearnRound,
     parseCSV, importCSV,
     getDeck, getFolder,

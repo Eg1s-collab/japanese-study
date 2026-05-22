@@ -21,7 +21,8 @@ window.FlashcardsView = (function () {
     folderId: null,
     deckId: null,
     cardsOpts: { shuffle: false, swap: false, starredOnly: false, autoSpeak: false },
-    learnOpts: { swap: false, starredOnly: false, autoSpeak: false }
+    learnOpts: { swap: false, starredOnly: false, autoSpeak: false },
+    dailyOpts: { swap: false, autoSpeak: false }
   };
 
   /* ---------- utils ---------- */
@@ -82,12 +83,126 @@ window.FlashcardsView = (function () {
     else if (state.screen === "deck")  root.appendChild(renderDeck());
     else if (state.screen === "cards") root.appendChild(renderCards());
     else if (state.screen === "learn") root.appendChild(renderLearn());
+    else if (state.screen === "dailyCards") root.appendChild(renderDailyCards());
+    else if (state.screen === "dailyLearn") root.appendChild(renderDailyLearn());
     return root;
   }
   function refresh(container) {
     const fresh = render();
     container.replaceWith(fresh);
     return fresh;
+  }
+
+  /* ---------- daily-words panel ----------
+   * A single mini-set sampled once per Thailand-local day, biased toward
+   * words the user previously stumbled on. Two-phase flow: Flash Cards
+   * first, then Learn (MCQ) only on the words still marked "ยังไม่ได้".
+   */
+  function renderDailyPanel(homeRoot) {
+    const wrap = document.createElement("section");
+    wrap.className = "card daily-card";
+    function draw() {
+      const FD = window.FlashcardsDaily;
+      if (!FD) { wrap.innerHTML = ""; return; }
+      const c = FD.counts();
+      const goal = FD.getGoalCount();
+      const total = c.total;
+      // If today's pool is empty (no studied words yet) we still render
+      // the panel to expose Settings + an explainer.
+      const noPool = total === 0;
+      const cardsPct = total ? Math.round((c.cardsDone / total) * 100) : 0;
+      const learnTotal = c.cardsUnknown + c.learnDone;
+      const learnPct = learnTotal ? Math.round((c.learnDone / learnTotal) * 100) : 0;
+      const cardsLabel = c.cardsRemaining > 0
+        ? (c.cardsDone > 0 ? "ทำ Flash Card ต่อ" : "เริ่ม Flash Card")
+        : "Flash Card เสร็จแล้ว";
+      const learnEnabled = (c.cardsUnknown > 0 || c.learnDone > 0) && c.cardsRemaining === 0 && c.cardsUnknown > 0;
+      const learnLabel = learnEnabled
+        ? (c.learnDone > 0 ? "ทำ Learn ต่อ" : "เริ่ม Learn")
+        : (c.cardsRemaining > 0 ? "Learn (รอ Flash Card เสร็จ)" : "ไม่มีคำที่ต้อง Learn");
+      wrap.innerHTML = `
+        <div class="daily-head">
+          <div class="daily-title-row">
+            <span class="daily-emoji">📅</span>
+            <h3 class="daily-title">คำประจำวัน</h3>
+            <span class="daily-target subtle">${total} / ${goal} คำ</span>
+          </div>
+          <div class="btn-row" style="margin:0;">
+            <button class="btn ghost" id="dailyRegenBtn" title="สลับชุดคำใหม่สำหรับวันนี้">↻ สุ่มใหม่</button>
+            <button class="btn ghost" id="dailyGoalBtn" title="ตั้งจำนวนคำต่อวัน">⚙ ตั้งจำนวน</button>
+          </div>
+        </div>
+        ${noPool ? `
+          <p class="subtle daily-empty">
+            ยังไม่มีคำในคลัง — ฝึก Flash Card หรือ Learn สักรอบในชุดคำใดก็ได้ก่อน
+            แล้วระบบจะหยิบคำที่เคย “ยังไม่ได้” มาให้ทบทวนวันละ ${goal} คำ
+          </p>
+        ` : `
+          <div class="daily-stats">
+            <div class="daily-stat">
+              <div class="daily-stat-label">📇 Flash Card</div>
+              <div class="daily-stat-row">
+                <span><strong>${c.cardsDone}</strong> / ${total}</span>
+                ${c.cardsUnknown ? `<span class="subtle">· เหลือ Learn ${c.cardsUnknown}</span>` : ""}
+              </div>
+              <div class="progress"><div class="bar" style="width:${cardsPct}%"></div></div>
+            </div>
+            <div class="daily-stat">
+              <div class="daily-stat-label">🎯 Learn (เฉพาะคำ “ยังไม่ได้”)</div>
+              <div class="daily-stat-row">
+                <span><strong>${c.learnDone}</strong> / ${learnTotal}</span>
+                ${learnTotal === 0 ? `<span class="subtle">· รอผล Flash Card</span>` : ""}
+              </div>
+              <div class="progress ${c.allDone && learnTotal > 0 ? "ok" : ""}"><div class="bar" style="width:${learnPct}%"></div></div>
+            </div>
+          </div>
+          ${c.allDone ? `<div class="daily-done">✓ ครบคำประจำวันแล้ว เก่งมาก!</div>` : ""}
+          <div class="btn-row daily-actions">
+            <button class="btn primary" id="dailyStartCards" ${c.cardsRemaining === 0 ? "disabled" : ""}>${cardsLabel}</button>
+            <button class="btn" id="dailyStartLearn" ${learnEnabled ? "" : "disabled"}>${learnLabel}</button>
+          </div>
+        `}
+      `;
+      const regen = wrap.querySelector("#dailyRegenBtn");
+      regen.addEventListener("click", () => {
+        if (!confirm("สุ่มคำประจำวันชุดใหม่? ความคืบหน้าของชุดเดิมจะถูกแทนที่")) return;
+        FD.regenerate();
+        draw();
+      });
+      const goalBtn = wrap.querySelector("#dailyGoalBtn");
+      goalBtn.addEventListener("click", () => {
+        const cur = FD.getGoalCount();
+        const v = prompt(`จำนวนคำต่อวัน (${FD.MIN_COUNT}–${FD.MAX_COUNT}):`, String(cur));
+        if (v == null) return;
+        const n = parseInt(v, 10);
+        if (!Number.isFinite(n) || n < FD.MIN_COUNT || n > FD.MAX_COUNT) {
+          alert(`กรุณาใส่ตัวเลขระหว่าง ${FD.MIN_COUNT} ถึง ${FD.MAX_COUNT}`);
+          return;
+        }
+        FD.setGoalCount(n);
+        draw();
+      });
+      const startCards = wrap.querySelector("#dailyStartCards");
+      if (startCards) startCards.addEventListener("click", () => {
+        if (startCards.disabled) return;
+        if (c.cardsRemaining === 0) return;
+        state.screen = "dailyCards";
+        if (homeRoot) refresh(homeRoot);
+      });
+      const startLearn = wrap.querySelector("#dailyStartLearn");
+      if (startLearn) startLearn.addEventListener("click", () => {
+        if (startLearn.disabled) return;
+        state.screen = "dailyLearn";
+        if (homeRoot) refresh(homeRoot);
+      });
+    }
+    draw();
+    if (window.FlashcardsDaily) {
+      const unsub = window.FlashcardsDaily.subscribe(() => {
+        if (wrap.isConnected) draw(); else unsub();
+      });
+    }
+    return wrap;
   }
 
   /* ---------- streak panel ---------- */
@@ -374,10 +489,12 @@ window.FlashcardsView = (function () {
         </div>
       </div>
       <p class="subtle">${folder ? "ชุดคำในโฟลเดอร์นี้" : "โฟลเดอร์และชุดคำที่ยังไม่จัดเข้าโฟลเดอร์"}</p>
+      <div id="fc-daily-slot"></div>
       <div id="fc-streak-slot"></div>
       <div id="fc-body"></div>
     `;
     if (!state.folderId) {
+      root.querySelector("#fc-daily-slot").appendChild(renderDailyPanel(root));
       root.querySelector("#fc-streak-slot").appendChild(renderStreakPanel());
     }
     const body = root.querySelector("#fc-body");
@@ -919,8 +1036,13 @@ window.FlashcardsView = (function () {
     function commit(action) {
       const wid = queueIds[0];
       if (!wid) { animating = false; return; }
-      if (action === "known") FS().markCardSeen(deck.id, wid);
-      else wrongIds.push(wid);
+      if (action === "known") {
+        FS().markCardSeen(deck.id, wid);
+      } else {
+        wrongIds.push(wid);
+        // Persistent "still unknown" tag for Daily Words selection.
+        FS().markCardUnknown(deck.id, wid);
+      }
       queueIds.shift();
       history.push({ wid, action });
       flipped = false;
@@ -1666,6 +1788,514 @@ window.FlashcardsView = (function () {
       clearAutoAdvance();
       window.speechSynthesis && window.speechSynthesis.cancel();
       state.screen = "deck"; refresh(root);
+    }
+
+    draw();
+    return root;
+  }
+
+  /* ===================== DAILY CARDS =====================
+   * Cross-deck flash-card session over today's daily pool. Like the
+   * per-deck cards screen, but each item carries its source deckId so
+   * we can pull the word from the right deck on every render.
+   * State transitions:
+   *   - "ผ่าน"      → setItemState(cardsKnown) + FS.markCardSeen
+   *   - "ยังไม่ได้" → setItemState(cardsUnknown) + FS.markCardUnknown
+   * Daily learn phase later consumes the "cardsUnknown" set.
+   */
+  function renderDailyCards() {
+    const FD = window.FlashcardsDaily;
+    const root = document.createElement("div");
+    if (!FD) { root.innerHTML = `<div class="empty">FlashcardsDaily ไม่พร้อม</div>`; return root; }
+
+    // Snapshot items at mount; we update an in-memory queue during the
+    // session and persist per-item via setItemState.
+    const allItems = FD.getItems();
+    const total = allItems.length;
+    // Queue = items still in "pending" state
+    let queue = allItems.filter((it) => it.state === "pending").map((it) => ({ ...it }));
+    // Tally counters from the snapshot for display
+    let donePassed = allItems.filter((it) => it.state === "cardsKnown").length;
+    let doneUnknown = allItems.filter((it) => it.state === "cardsUnknown" || it.state === "learnDone").length;
+    let flipped = false;
+    let animating = false;
+    let lastSpokenKey = null;
+    const history = [];
+
+    function getWord(it) {
+      const d = window.FlashcardsStorage.getDeck(it.deckId);
+      if (!d) return null;
+      return d.words.find((w) => w.id === it.wordId) || null;
+    }
+    function deckName(it) {
+      const d = window.FlashcardsStorage.getDeck(it.deckId);
+      return d ? d.name : "";
+    }
+    function frontOf(w) { return state.dailyOpts.swap ? w.back : w.front; }
+    function backOf(w)  { return state.dailyOpts.swap ? w.front : w.back; }
+
+    function maybeAutoSpeak(force) {
+      if (!state.dailyOpts.autoSpeak) return;
+      const it = queue[0];
+      if (!it) return;
+      const w = getWord(it);
+      if (!w) return;
+      const text = flipped ? backOf(w) : frontOf(w);
+      if (!hasJapanese(text)) return;
+      const key = `${it.wordId}:${flipped ? "b" : "f"}`;
+      if (!force && key === lastSpokenKey) return;
+      lastSpokenKey = key;
+      speak(text, "ja-JP");
+    }
+
+    function commit(action) {
+      const it = queue[0];
+      if (!it) { animating = false; return; }
+      if (action === "known") {
+        FD.setItemState(it.deckId, it.wordId, "cardsKnown");
+        window.FlashcardsStorage.markCardSeen(it.deckId, it.wordId);
+        donePassed++;
+      } else {
+        FD.setItemState(it.deckId, it.wordId, "cardsUnknown");
+        window.FlashcardsStorage.markCardUnknown(it.deckId, it.wordId);
+        doneUnknown++;
+      }
+      queue.shift();
+      history.push({ it, action });
+      flipped = false;
+      animating = false;
+      draw();
+    }
+
+    function undo() {
+      if (animating) return;
+      const last = history.pop();
+      if (!last) return;
+      // Best-effort reversal in storage (re-mark unknown won't reach
+      // historical seenIds, but stillUnknownIds + daily state revert).
+      if (last.action === "known") {
+        window.FlashcardsStorage.unmarkCardSeen(last.it.deckId, last.it.wordId);
+        donePassed = Math.max(0, donePassed - 1);
+      } else {
+        doneUnknown = Math.max(0, doneUnknown - 1);
+      }
+      FD.setItemState(last.it.deckId, last.it.wordId, "pending");
+      queue.unshift({ ...last.it, state: "pending" });
+      flipped = false;
+      draw();
+    }
+
+    function animateOut(dir, then) {
+      if (animating) return;
+      animating = true;
+      const c = root.querySelector("#card");
+      if (!c) { animating = false; then(); return; }
+      c.style.pointerEvents = "none";
+      c.style.transition = "transform .22s ease, opacity .22s ease";
+      c.style.transform = `translateX(${dir > 0 ? "120%" : "-120%"}) rotate(${dir > 0 ? 16 : -16}deg)`;
+      c.style.opacity = "0";
+      setTimeout(() => then(), 200);
+    }
+
+    function renderHeader() {
+      return `
+        <div class="qmeta">
+          <h2 style="margin:0;">📅 คำประจำวัน · Flash Card</h2>
+          <button class="btn ghost" id="back">← กลับ</button>
+        </div>
+        <p class="subtle">หยิบ ${total} คำมาทบทวน (เน้นคำที่เคย “ยังไม่ได้”)</p>
+      `;
+    }
+    function renderToolbar() {
+      return `
+        <div class="fc-toolbar fc-toolbar-sticky">
+          <label class="fc-toggle"><input type="checkbox" data-opt="swap" ${state.dailyOpts.swap ? "checked" : ""}/> สลับด้าน</label>
+          <label class="fc-toggle"><input type="checkbox" data-opt="autoSpeak" ${state.dailyOpts.autoSpeak ? "checked" : ""}/> 🔊 อ่านอัตโนมัติ</label>
+        </div>
+      `;
+    }
+    function bindToolbar() {
+      root.querySelectorAll(".fc-toolbar input[data-opt]").forEach((cb) => {
+        cb.addEventListener("change", () => {
+          state.dailyOpts[cb.dataset.opt] = cb.checked;
+          if (cb.dataset.opt === "autoSpeak") {
+            if (!cb.checked) window.speechSynthesis && window.speechSynthesis.cancel();
+            else maybeAutoSpeak(true);
+          } else {
+            draw();
+          }
+        });
+      });
+    }
+    function bindHeader() {
+      root.querySelector("#back").addEventListener("click", goBack);
+    }
+    function goBack() {
+      window.speechSynthesis && window.speechSynthesis.cancel();
+      state.screen = "home"; refresh(root);
+    }
+
+    function draw() {
+      if (!total) {
+        root.innerHTML = `
+          ${renderHeader()}
+          <div class="empty">ยังไม่มีคำในคลังคำประจำวัน — กลับไปฝึกในชุดคำสักครั้งก่อน</div>
+        `;
+        bindHeader();
+        return;
+      }
+      if (queue.length === 0) {
+        const allUnknown = doneUnknown;
+        root.innerHTML = `
+          ${renderHeader()}
+          ${renderToolbar()}
+          <div class="qprog">เสร็จแล้ว: ${donePassed + doneUnknown} / ${total} (ผ่าน ${donePassed} · ยังไม่ได้ ${allUnknown})</div>
+          <div class="progress ok"><div class="bar" style="width:100%"></div></div>
+          <div class="score-card">
+            <div>
+              <h2 style="margin:0;">จบ Flash Card วันนี้แล้ว</h2>
+              <p class="subtle">${allUnknown > 0 ? `ยังต้อง Learn อีก ${allUnknown} คำ` : "ครบทุกคำเลย เก่งมาก!"}</p>
+            </div>
+            <div class="score-num">${allUnknown > 0 ? allUnknown : "✓"}</div>
+          </div>
+          <div class="btn-row">
+            ${allUnknown > 0 ? `<button class="btn primary" id="goLearnNow">ไปทำ Learn ต่อ →</button>` : ""}
+            ${history.length ? `<button class="btn" id="undoEnd">↶ ย้อนกลับ</button>` : ""}
+            <button class="btn ghost" id="back2">กลับหน้าหลัก</button>
+          </div>
+        `;
+        bindHeader(); bindToolbar();
+        const ge = root.querySelector("#goLearnNow");
+        if (ge) ge.addEventListener("click", () => { state.screen = "dailyLearn"; refresh(root); });
+        const undoEndBtn = root.querySelector("#undoEnd");
+        if (undoEndBtn) undoEndBtn.addEventListener("click", undo);
+        root.querySelector("#back2").addEventListener("click", goBack);
+        return;
+      }
+
+      const it = queue[0];
+      const w = getWord(it);
+      if (!w) {
+        // Word deleted from deck while away — drop it and continue.
+        FD.setItemState(it.deckId, it.wordId, "cardsKnown");
+        queue.shift();
+        return draw();
+      }
+      const shownText = flipped ? backOf(w) : frontOf(w);
+      const idx = donePassed + doneUnknown + 1; // 1-based position of current card
+      const pct = total ? Math.round(((idx - 1) / total) * 100) : 0;
+
+      root.innerHTML = `
+        ${renderHeader()}
+        ${renderToolbar()}
+        <div class="qprog">${idx} / ${total} · ผ่าน ${donePassed} · ยังไม่ได้ ${doneUnknown}</div>
+        <div class="progress"><div class="bar" style="width:${pct}%"></div></div>
+
+        <div class="fc-flashcard ${flipped ? "is-flipped" : ""}" id="card" tabindex="0">
+          <div class="fc-flashcard-inner">
+            <div class="fc-flashcard-face fc-face-front">
+              <div class="fc-flashcard-text">${escapeHtml(shownText)}</div>
+              <div class="fc-flashcard-hint">${flipped ? "ด้านหลัง" : "ด้านหน้า"} — แตะเพื่อพลิก · จาก ${escapeHtml(deckName(it))}</div>
+            </div>
+          </div>
+          <div class="fc-swipe-hint fc-swipe-hint-left">✕ ยังไม่ได้</div>
+          <div class="fc-swipe-hint fc-swipe-hint-right">✓ ผ่าน</div>
+        </div>
+
+        <div class="btn-row" style="justify-content:space-between;">
+          <button class="btn fc-btn-unknown" id="btnUnknown">← ยังไม่ได้</button>
+          <div class="btn-row" style="margin:0;">
+            <button class="btn" id="undoBtn" title="ย้อนกลับ" ${history.length ? "" : "disabled"}>↶ ย้อนกลับ</button>
+            <button class="btn" id="speakBtn" title="ออกเสียง">🔊</button>
+            <button class="btn" id="flipBtn">พลิก</button>
+          </div>
+          <button class="btn fc-btn-known" id="btnKnown">ผ่าน →</button>
+        </div>
+      `;
+      bindHeader(); bindToolbar();
+      setupSwipe(root.querySelector("#card"));
+      root.querySelector("#flipBtn").addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (animating) return;
+        flipped = !flipped; draw();
+      });
+      root.querySelector("#btnUnknown").addEventListener("click", () => animateOut(-1, () => commit("unknown")));
+      root.querySelector("#btnKnown").addEventListener("click", () => animateOut(1, () => commit("known")));
+      root.querySelector("#undoBtn").addEventListener("click", undo);
+      root.querySelector("#speakBtn").addEventListener("click", () => speak(shownText));
+      maybeAutoSpeak();
+    }
+
+    function setupSwipe(cardEl) {
+      if (!cardEl) return;
+      let startX = 0, dx = 0, dragging = false, moved = false;
+      const THRESHOLD = 80;
+      cardEl.addEventListener("pointerdown", (e) => {
+        if (animating || dragging) return;
+        if (e.target.closest("button")) return;
+        dragging = true; moved = false;
+        startX = e.clientX; dx = 0;
+        try { cardEl.setPointerCapture(e.pointerId); } catch (_) {}
+        cardEl.style.transition = "none";
+      });
+      cardEl.addEventListener("pointermove", (e) => {
+        if (!dragging) return;
+        dx = e.clientX - startX;
+        if (Math.abs(dx) > 8) moved = true;
+        cardEl.style.transform = `translateX(${dx}px) rotate(${dx * 0.06}deg)`;
+        cardEl.classList.toggle("hint-right", dx > 30);
+        cardEl.classList.toggle("hint-left", dx < -30);
+      });
+      function release(e) {
+        if (!dragging) return;
+        dragging = false;
+        try { cardEl.releasePointerCapture(e.pointerId); } catch (_) {}
+        cardEl.style.transition = "transform .22s ease, opacity .22s ease";
+        if (!moved) {
+          cardEl.style.transform = "";
+          cardEl.classList.remove("hint-right", "hint-left");
+          if (animating) return;
+          flipped = !flipped; draw();
+          return;
+        }
+        if (animating) { cardEl.style.transform = ""; return; }
+        if (dx > THRESHOLD) {
+          animating = true;
+          cardEl.style.pointerEvents = "none";
+          cardEl.style.transform = "translateX(120%) rotate(16deg)";
+          cardEl.style.opacity = "0";
+          setTimeout(() => commit("known"), 200);
+        } else if (dx < -THRESHOLD) {
+          animating = true;
+          cardEl.style.pointerEvents = "none";
+          cardEl.style.transform = "translateX(-120%) rotate(-16deg)";
+          cardEl.style.opacity = "0";
+          setTimeout(() => commit("unknown"), 200);
+        } else {
+          cardEl.style.transform = "";
+          cardEl.classList.remove("hint-right", "hint-left");
+        }
+      }
+      cardEl.addEventListener("pointerup", release);
+      cardEl.addEventListener("pointercancel", () => {
+        if (!dragging) return;
+        dragging = false;
+        cardEl.style.transition = "transform .2s ease";
+        cardEl.style.transform = "";
+        cardEl.classList.remove("hint-right", "hint-left");
+      });
+    }
+
+    draw();
+    return root;
+  }
+
+  /* ===================== DAILY LEARN =====================
+   * MCQ over today's daily items that ended Flash Card in "cardsUnknown".
+   * Distractors come from the same source deck as each target word (so
+   * difficulty stays roughly comparable). Correct answer commits to
+   * learnDone; wrong answers cycle back through the queue.
+   */
+  function renderDailyLearn() {
+    const FD = window.FlashcardsDaily;
+    const root = document.createElement("div");
+    if (!FD) { root.innerHTML = `<div class="empty">FlashcardsDaily ไม่พร้อม</div>`; return root; }
+
+    const allItems = FD.getItems();
+    // Active queue = items in "cardsUnknown" — what Learn needs to clear.
+    const targets = allItems.filter((it) => it.state === "cardsUnknown");
+    let queue = targets.map((it) => ({ ...it }));
+    const initialTotal = queue.length;
+    let learnDone = allItems.filter((it) => it.state === "learnDone").length;
+    let answeredThis = false;
+    let autoAdvanceTimer = null;
+    let lastSpokenWid = null;
+
+    function getWord(it) {
+      const d = window.FlashcardsStorage.getDeck(it.deckId);
+      if (!d) return null;
+      return d.words.find((w) => w.id === it.wordId) || null;
+    }
+    function frontOf(w) { return state.dailyOpts.swap ? w.back : w.front; }
+    function backOf(w)  { return state.dailyOpts.swap ? w.front : w.back; }
+
+    function clearAutoAdvance() {
+      if (autoAdvanceTimer) { clearTimeout(autoAdvanceTimer); autoAdvanceTimer = null; }
+    }
+    function maybeAutoSpeak(force) {
+      if (!state.dailyOpts.autoSpeak) return;
+      const it = queue[0];
+      if (!it) return;
+      const w = getWord(it);
+      if (!w) return;
+      const text = frontOf(w);
+      if (!hasJapanese(text)) return;
+      if (!force && it.wordId === lastSpokenWid) return;
+      lastSpokenWid = it.wordId;
+      speak(text, "ja-JP");
+    }
+    function renderHeader() {
+      return `
+        <div class="qmeta">
+          <h2 style="margin:0;">📅 คำประจำวัน · Learn</h2>
+          <button class="btn ghost" id="back">← กลับ</button>
+        </div>
+        <p class="subtle">เฉพาะคำที่ยังไม่ได้ (${initialTotal} คำ)</p>
+      `;
+    }
+    function renderToolbar() {
+      return `
+        <div class="fc-toolbar fc-toolbar-sticky">
+          <label class="fc-toggle"><input type="checkbox" data-opt="swap" ${state.dailyOpts.swap ? "checked" : ""}/> สลับด้าน</label>
+          <label class="fc-toggle"><input type="checkbox" data-opt="autoSpeak" ${state.dailyOpts.autoSpeak ? "checked" : ""}/> 🔊 อ่านอัตโนมัติ</label>
+        </div>
+      `;
+    }
+    function bindToolbar() {
+      root.querySelectorAll(".fc-toolbar input[data-opt]").forEach((cb) => {
+        cb.addEventListener("change", () => {
+          state.dailyOpts[cb.dataset.opt] = cb.checked;
+          if (cb.dataset.opt === "autoSpeak") {
+            if (!cb.checked) window.speechSynthesis && window.speechSynthesis.cancel();
+            else maybeAutoSpeak(true);
+          } else {
+            draw();
+          }
+        });
+      });
+    }
+    function bindHeader() { root.querySelector("#back").addEventListener("click", goBack); }
+    function goBack() {
+      clearAutoAdvance();
+      window.speechSynthesis && window.speechSynthesis.cancel();
+      state.screen = "home"; refresh(root);
+    }
+
+    function makeChoices(it, word) {
+      const d = window.FlashcardsStorage.getDeck(it.deckId);
+      if (!d) return [{ text: backOf(word), correct: true }];
+      const target = backOf(word);
+      const candidates = d.words
+        .filter((w) => w.id !== word.id)
+        .filter((w) => backOf(w) && backOf(w) !== target);
+      // Random 3 distractors
+      const picked = [];
+      const pool = candidates.slice();
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+      for (const w of pool) {
+        if (picked.length >= 3) break;
+        if (picked.some((p) => backOf(p) === backOf(w))) continue;
+        picked.push(w);
+      }
+      const merged = [word, ...picked];
+      for (let i = merged.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [merged[i], merged[j]] = [merged[j], merged[i]];
+      }
+      return merged.map((w) => ({ text: backOf(w), correct: w.id === word.id }));
+    }
+
+    function draw() {
+      if (initialTotal === 0) {
+        root.innerHTML = `
+          ${renderHeader()}
+          <div class="empty">ไม่มีคำที่ต้อง Learn — ลองทำ Flash Card ของคำประจำวันก่อน</div>
+        `;
+        bindHeader(); return;
+      }
+      if (queue.length === 0) {
+        root.innerHTML = `
+          ${renderHeader()}
+          ${renderToolbar()}
+          <div class="qprog">เสร็จ ${learnDone} / ${initialTotal}</div>
+          <div class="progress ok"><div class="bar" style="width:100%"></div></div>
+          <div class="score-card">
+            <div>
+              <h2 style="margin:0;">เรียนครบแล้ว!</h2>
+              <p class="subtle">${initialTotal} คำที่เคยยังไม่ได้ ผ่านหมดเรียบร้อย</p>
+            </div>
+            <div class="score-num">✓</div>
+          </div>
+          <div class="btn-row">
+            <button class="btn ghost" id="back2">กลับหน้าหลัก</button>
+          </div>
+        `;
+        bindHeader(); bindToolbar();
+        root.querySelector("#back2").addEventListener("click", goBack);
+        return;
+      }
+      const it = queue[0];
+      const w = getWord(it);
+      if (!w) { queue.shift(); return draw(); }
+      const choices = makeChoices(it, w);
+      const idx = learnDone + 1;
+      const pct = initialTotal ? Math.round((learnDone / initialTotal) * 100) : 0;
+
+      root.innerHTML = `
+        ${renderHeader()}
+        ${renderToolbar()}
+        <div class="qprog">${idx} / ${initialTotal} · ผ่านแล้ว ${learnDone}</div>
+        <div class="progress"><div class="bar" style="width:${pct}%"></div></div>
+        <div class="card">
+          <div class="fc-learn-prompt">
+            <div class="fc-learn-q">${escapeHtml(frontOf(w))}</div>
+            <button class="btn ghost fc-speak" id="speakBtn" title="ออกเสียง">🔊</button>
+          </div>
+          <div id="choices">
+            ${choices.map((c, i) => `
+              <button class="choice" data-i="${i}" data-correct="${c.correct ? 1 : 0}">${escapeHtml(c.text)}</button>
+            `).join("")}
+          </div>
+          <div id="fb"></div>
+          <div class="btn-row" style="justify-content:flex-end;">
+            <button class="btn primary" id="next" style="display:none;">ถัดไป →</button>
+          </div>
+        </div>
+      `;
+      bindHeader(); bindToolbar();
+      answeredThis = false;
+      clearAutoAdvance();
+      root.querySelector("#speakBtn").addEventListener("click", () => speak(frontOf(w)));
+      maybeAutoSpeak();
+
+      const choiceBtns = root.querySelectorAll(".choice");
+      const nextBtn = root.querySelector("#next");
+      function advance() {
+        clearAutoAdvance();
+        draw();
+      }
+      choiceBtns.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          if (answeredThis) return;
+          answeredThis = true;
+          const wasCorrect = btn.dataset.correct === "1";
+          choiceBtns.forEach((b) => {
+            b.classList.add("disabled");
+            if (b.dataset.correct === "1") b.classList.add("correct");
+            else if (b === btn) b.classList.add("wrong");
+          });
+          const fb = root.querySelector("#fb");
+          window.FlashcardsStorage.recordLearnAttempt(it.deckId, it.wordId, wasCorrect, { markCompleted: false });
+          if (wasCorrect) {
+            FD.setItemState(it.deckId, it.wordId, "learnDone");
+            window.FlashcardsStorage.markLearnCompleted(it.deckId, [it.wordId]);
+            queue.shift();
+            learnDone++;
+            fb.innerHTML = `<div class="feedback ok"><strong>ถูกต้อง ✓</strong></div>`;
+          } else {
+            // Recycle to back of queue for another try this session
+            queue.push(queue.shift());
+            fb.innerHTML = `<div class="feedback bad"><strong>ยังไม่ถูก ✗</strong>
+              <div style="margin-top:4px;">เฉลย: ${escapeHtml(backOf(w))} — จะถูกถามอีกครั้งภายหลัง</div></div>`;
+          }
+          nextBtn.style.display = "inline-block";
+          autoAdvanceTimer = setTimeout(advance, wasCorrect ? 700 : 1800);
+        });
+      });
+      nextBtn.addEventListener("click", advance);
     }
 
     draw();

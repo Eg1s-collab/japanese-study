@@ -1550,3 +1550,113 @@ h3 { margin: 0 0 6px; font-size: 16px; }
   }
   .hm-day { font-size: 11px; }
 }
+
+/* ============================================================
+ * Flashcards Daily Words panel (home tab only)
+ * ============================================================ */
+.daily-card {
+  padding: 14px 16px;
+  margin: 14px 0 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background:
+    linear-gradient(135deg, rgba(167, 139, 250, 0.08), rgba(96, 165, 250, 0.05) 60%, transparent),
+    var(--card-bg, rgba(255,255,255,0.04));
+  border: 1px solid rgba(167, 139, 250, 0.22);
+}
+.daily-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.daily-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.daily-emoji {
+  font-size: 22px;
+  line-height: 1;
+  filter: drop-shadow(0 0 6px rgba(167, 139, 250, 0.45));
+}
+.daily-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+}
+.daily-target {
+  font-size: 12px;
+  opacity: 0.8;
+  white-space: nowrap;
+}
+.daily-empty {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.daily-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.daily-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.daily-stat-label {
+  font-size: 12px;
+  opacity: 0.75;
+  font-weight: 600;
+}
+.daily-stat-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.daily-stat-row strong {
+  font-size: 18px;
+}
+.daily-stat .progress {
+  height: 7px;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.daily-stat .progress .bar {
+  background: linear-gradient(90deg, #a78bfa, #60a5fa);
+}
+.daily-stat .progress.ok .bar {
+  background: linear-gradient(90deg, #34d399, #60a5fa);
+}
+.daily-done {
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(52, 211, 153, 0.18), rgba(96, 165, 250, 0.14));
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  color: rgba(255, 255, 255, 0.92);
+  font-weight: 600;
+  text-align: center;
+}
+.daily-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.daily-actions .btn {
+  flex: 1 1 auto;
+  min-width: 140px;
+}
+@media (max-width: 540px) {
+  .daily-head .btn-row {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
