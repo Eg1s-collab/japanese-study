@@ -46,6 +46,7 @@ const CJ_KEY = "jp_conjugation_progress_v1";
 const FC_KEY = "jp_flashcards_v1";
 const LP_KEY = "jp_lesson_progress_v1";
 const DL_KEY = "jp_daily_v1";
+const FS_KEY = "jp_flashcards_streak_v1";
 
 let currentUser = null;
 let pushTimer = null;
@@ -134,6 +135,7 @@ async function pullAndMerge() {
     const localFc = JSON.parse(localStorage.getItem(FC_KEY) || "null");
     const localLp = JSON.parse(localStorage.getItem(LP_KEY) || "null");
     const localDl = JSON.parse(localStorage.getItem(DL_KEY) || "null");
+    const localFs = JSON.parse(localStorage.getItem(FS_KEY) || "null");
 
     const mergedBm = mergeBookmarks(cloud ? cloud.bookmarks : [], localBm);
     let mergedCj = mergeConj(cloud ? cloud.conjugation : {}, localCj);
@@ -161,11 +163,21 @@ async function pullAndMerge() {
       ? window.DailyStorage.mergeForCloud(localDl, cloudDl)
       : (cloudDl || localDl || { wrong: {}, settings: { maxCount: 10 }, sessions: {}, updatedAt: 0 });
 
+    // Flashcards streak: per-day max + goal LWW
+    const cloudFs = cloud && cloud.flashcardsStreak ? cloud.flashcardsStreak : null;
+    const mergedFs = window.FlashcardsStreak
+      ? window.FlashcardsStreak.mergeForCloud(localFs, cloudFs)
+      : (cloudFs || localFs || { goal: 50, days: {}, updatedAt: 0 });
+
     localStorage.setItem(BM_KEY, JSON.stringify(mergedBm));
     localStorage.setItem(CJ_KEY, JSON.stringify(mergedCj));
     localStorage.setItem(FC_KEY, JSON.stringify(mergedFc));
     localStorage.setItem(LP_KEY, JSON.stringify(mergedLp));
     localStorage.setItem(DL_KEY, JSON.stringify(mergedDl));
+    localStorage.setItem(FS_KEY, JSON.stringify(mergedFs));
+    if (window.FlashcardsStreak && window.FlashcardsStreak.setFromCloud) {
+      window.FlashcardsStreak.setFromCloud(mergedFs);
+    }
 
     await setDoc(ref, {
       bookmarks: mergedBm,
@@ -173,6 +185,7 @@ async function pullAndMerge() {
       flashcards: mergedFc,
       lessonProgress: mergedLp,
       daily: mergedDl,
+      flashcardsStreak: mergedFs,
       updatedAt: serverTimestamp(),
       clientTs: Date.now()
     });
@@ -197,6 +210,7 @@ async function pushNow() {
       flashcards: JSON.parse(localStorage.getItem(FC_KEY) || "null") || { folders: [], decks: [], updatedAt: 0 },
       lessonProgress: JSON.parse(localStorage.getItem(LP_KEY) || "null") || { records: {}, updatedAt: 0 },
       daily: JSON.parse(localStorage.getItem(DL_KEY) || "null") || { wrong: {}, settings: { maxCount: 10 }, sessions: {}, updatedAt: 0 },
+      flashcardsStreak: JSON.parse(localStorage.getItem(FS_KEY) || "null") || { goal: 50, days: {}, updatedAt: 0 },
       updatedAt: serverTimestamp(),
       clientTs: Date.now()
     });

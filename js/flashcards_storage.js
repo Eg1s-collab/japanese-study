@@ -336,6 +336,7 @@ window.FlashcardsStorage = (function () {
     if (!d.progress.cards.seenIds.includes(wordId)) {
       d.progress.cards.seenIds.push(wordId);
       save(state);
+      if (window.FlashcardsStreak) window.FlashcardsStreak.addCards(1);
     }
   }
   function unmarkCardSeen(deckId, wordId) {
@@ -353,14 +354,17 @@ window.FlashcardsStorage = (function () {
     if (!d) return;
     ensureDeckShape(d);
     d.progress.learn.attempts++;
+    let newlyCompleted = 0;
     if (isCorrect) {
       d.progress.learn.correct++;
       const markCompleted = !opts || opts.markCompleted !== false;
       if (markCompleted && !d.progress.learn.completedIds.includes(wordId)) {
         d.progress.learn.completedIds.push(wordId);
+        newlyCompleted = 1;
       }
     }
     save(state);
+    if (newlyCompleted && window.FlashcardsStreak) window.FlashcardsStreak.addCards(newlyCompleted);
   }
   function markLearnCompleted(deckId, wordIds) {
     const state = load();
@@ -368,14 +372,17 @@ window.FlashcardsStorage = (function () {
     if (!d) return;
     ensureDeckShape(d);
     const list = Array.isArray(wordIds) ? wordIds : [wordIds];
-    let changed = false;
+    let added = 0;
     for (const id of list) {
       if (id && !d.progress.learn.completedIds.includes(id)) {
         d.progress.learn.completedIds.push(id);
-        changed = true;
+        added++;
       }
     }
-    if (changed) save(state);
+    if (added) {
+      save(state);
+      if (window.FlashcardsStreak) window.FlashcardsStreak.addCards(added);
+    }
   }
   function clearProgress(deckId, mode) {
     const state = load();

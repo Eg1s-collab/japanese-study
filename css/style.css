@@ -1285,3 +1285,268 @@ h3 { margin: 0 0 6px; font-size: 16px; }
   padding: 8px 14px;
   box-shadow: 0 0 18px rgba(251, 191, 36, 0.18) inset;
 }
+
+/* ============================================================
+ * Flashcards streak panel + heatmap (home tab only)
+ * ============================================================ */
+.streak-card {
+  padding: 14px 16px;
+  margin: 14px 0 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.streak-head {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+.streak-stat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.streak-stat:nth-child(2) { flex: 1 1 220px; }
+.streak-flame {
+  font-size: 28px;
+  line-height: 1;
+  filter: drop-shadow(0 0 6px rgba(255, 138, 42, 0.5));
+}
+.streak-num {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.streak-sub {
+  font-size: 12px;
+  opacity: 0.7;
+}
+.streak-today {
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+.streak-today strong {
+  font-size: 18px;
+}
+.streak-progress {
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.streak-progress .bar {
+  background: linear-gradient(90deg, #ff8a2a, #fbbf24);
+}
+.streak-goal-btn {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* Calendar-style heatmap: single focused month with prev/next nav, plus
+ * a year overview mode that drills back into a month on click. */
+.heatmap-cal {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.hm-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.hm-nav-title {
+  font-size: 14px;
+  font-weight: 600;
+  min-width: 130px;
+  text-align: center;
+}
+.btn.ghost.hm-nav-btn {
+  padding: 4px 12px;
+  font-size: 18px;
+  line-height: 1;
+  min-width: 36px;
+}
+.btn.ghost.hm-nav-btn[disabled] {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.btn.ghost.hm-mode-btn {
+  margin-left: auto;
+  padding: 4px 12px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.hm-year-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.hm-year-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 4px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.15s;
+}
+.hm-year-tile:hover,
+.hm-year-tile:focus-visible {
+  background: rgba(255, 138, 42, 0.08);
+  outline: none;
+}
+.hm-year-tile.is-current {
+  background: rgba(255, 138, 42, 0.06);
+  outline: 1px solid rgba(255, 138, 42, 0.35);
+}
+.hm-year-tile.is-future {
+  opacity: 0.55;
+  cursor: default;
+}
+.hm-year-tile-title {
+  font-size: 12px;
+  opacity: 0.85;
+  font-weight: 500;
+}
+.hm-month-grid.compact {
+  max-width: 100%;
+  gap: 1.5px;
+}
+.hm-month-grid.compact .hm-cell {
+  font-size: 0;
+  border-radius: 2px;
+}
+@media (max-width: 480px) {
+  .hm-year-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .btn.ghost.hm-mode-btn { margin-left: 0; }
+}
+.hm-month {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.hm-month-title {
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.85;
+  text-align: center;
+}
+.hm-month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+  max-width: 320px;
+  width: 100%;
+  margin: 0 auto;
+}
+.hm-dow {
+  font-size: 10px;
+  opacity: 0.55;
+  text-align: center;
+  padding-bottom: 2px;
+}
+.hm-cell {
+  aspect-ratio: 1 / 1;
+  border-radius: 4px;
+  background: rgba(140, 140, 160, 0.16);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  font-size: 10px;
+}
+.hm-cell.empty { background: transparent; }
+.hm-cell.future {
+  background: transparent;
+  border: 1px dashed rgba(140, 140, 160, 0.25);
+}
+.hm-cell.future .hm-day { opacity: 0.35; }
+.hm-cell.l0 { background: rgba(140, 140, 160, 0.16); }
+.hm-cell.l1 { background: rgba(255, 138, 42, 0.32); }
+.hm-cell.l2 { background: rgba(255, 138, 42, 0.55); }
+.hm-cell.l3 { background: rgba(255, 138, 42, 0.78); }
+.hm-cell.l4 {
+  background: linear-gradient(135deg, #ff8a2a, #fbbf24);
+  box-shadow: 0 0 6px rgba(251, 191, 36, 0.55);
+}
+.hm-cell.today {
+  outline: 2px solid var(--accent, #ec4899);
+  outline-offset: 1px;
+  z-index: 1;
+}
+.hm-cell[data-day] { cursor: pointer; }
+.hm-cell[data-day]:hover { filter: brightness(1.15); }
+.hm-cell.selected {
+  outline: 2px solid #fbbf24;
+  outline-offset: 1px;
+  z-index: 2;
+}
+.hm-cell.today.selected {
+  outline-color: #fbbf24;
+  box-shadow: 0 0 0 1px var(--accent, #ec4899);
+}
+
+/* Inline day-detail strip shown below the month grid */
+.hm-day-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  margin-top: 4px;
+  border-radius: 10px;
+  background: rgba(140, 140, 160, 0.08);
+  font-size: 13px;
+}
+.hm-day-detail.subtle {
+  text-align: center;
+  padding: 6px 12px;
+  font-size: 12px;
+}
+.hm-detail-date {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.hm-detail-badge {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accent, #ec4899);
+  color: #fff;
+  font-weight: 500;
+}
+.hm-detail-count strong { font-size: 16px; }
+.hm-detail-ok { color: #fbbf24; font-weight: 600; }
+.hm-detail-bar {
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.hm-detail-bar .bar {
+  background: linear-gradient(90deg, #ff8a2a, #fbbf24);
+}
+.hm-day {
+  color: rgba(255, 255, 255, 0.78);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.hm-cell.l4 .hm-day { color: rgba(20, 12, 0, 0.85); font-weight: 600; }
+.hm-max {
+  margin-left: 6px;
+  opacity: 0.7;
+  font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .streak-goal-btn {
+    margin-left: 0;
+  }
+  .hm-day { font-size: 11px; }
+}

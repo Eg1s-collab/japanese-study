@@ -90,6 +90,271 @@ window.FlashcardsView = (function () {
     return fresh;
   }
 
+  /* ---------- streak panel ---------- */
+  function renderStreakPanel() {
+    const wrap = document.createElement("section");
+    wrap.className = "card streak-card";
+
+    // Local view state — persists across navigation clicks within this panel.
+    // mode "month" shows the focused month at full size; mode "year" shows
+    // a 12-tile overview that's clickable to drill back into a month.
+    // selectedDay holds a YYYY-MM-DD when the user has tapped a day in
+    // month view (drives the inline detail strip below the grid).
+    const view = { mode: "month", y: null, m: null, selectedDay: null };
+
+    const dowLabels = ["จ", "อ", "พ", "พฤ", "ศ", "ส", "อา"];
+    const dowLong = ["จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์", "อาทิตย์"];
+    const monthLabels = [
+      "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.",
+      "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."
+    ];
+    function pad2(n) { return String(n).padStart(2, "0"); }
+
+    function draw() {
+      const FStr = window.FlashcardsStreak;
+      if (!FStr) { wrap.innerHTML = ""; return; }
+      const goal = FStr.getGoal();
+      const today = FStr.getToday();
+      const streak = FStr.getStreak();
+      const pct = Math.min(100, Math.round((today / goal) * 100));
+
+      const todayKey = FStr.thailandDate();
+      const [tyS, tmS] = todayKey.split("-");
+      const tY = parseInt(tyS, 10);
+      const tM = parseInt(tmS, 10);
+
+      // Default cursor → today's month/year. Clamp forward navigation
+      // so the user can't peek past today (no data there).
+      if (view.y == null) { view.y = tY; view.m = tM; }
+
+      function lvl(c, met) {
+        if (c === 0) return "l0";
+        if (met) return "l4";
+        const ratio = c / Math.max(goal, 1);
+        if (ratio >= 0.66) return "l3";
+        if (ratio >= 0.33) return "l2";
+        return "l1";
+      }
+
+      // Track max within visible range only, so the header stat reflects
+      // the currently shown period rather than all-time history.
+      let max = 0;
+
+      function renderMonth(y, m, compact) {
+        const daysInMonth = new Date(y, m, 0).getDate();
+        const firstDow = new Date(y, m - 1, 1).getDay();
+        const padLeading = (firstDow + 6) % 7;
+        const dowHtml = compact
+          ? ""
+          : dowLabels.map((l) => `<span class="hm-dow">${l}</span>`).join("");
+        const padHtml = Array.from({ length: padLeading }, () => `<span class="hm-cell empty"></span>`).join("");
+        let cellsHtml = "";
+        for (let day = 1; day <= daysInMonth; day++) {
+          const key = `${y}-${pad2(m)}-${pad2(day)}`;
+          const count = FStr.getCount(key);
+          if (count > max) max = count;
+          const isFuture = key > todayKey;
+          const isToday = key === todayKey;
+          const isSelected = !compact && key === view.selectedDay;
+          const met = !isFuture && count >= goal;
+          const cls = isFuture ? "future" : lvl(count, met);
+          const title = isFuture
+            ? `${pad2(day)}/${pad2(m)}/${y}`
+            : `${pad2(day)}/${pad2(m)}/${y} — ${count}/${goal} คำ${met ? " ✓" : ""}`;
+          const dayLabel = compact ? "" : `<span class="hm-day">${day}</span>`;
+          // In month view, cells are clickable to surface that day's detail.
+          // In compact (year overview) cells defer to the tile's click handler.
+          const dataAttr = compact ? "" : ` data-day="${key}"`;
+          const clsList = ["hm-cell", cls];
+          if (isToday) clsList.push("today");
+          if (isSelected) clsList.push("selected");
+          cellsHtml += `<span class="${clsList.join(" ")}" title="${title}"${dataAttr}>${dayLabel}</span>`;
+        }
+        const cls = "hm-month-grid" + (compact ? " compact" : "");
+        return `<div class="${cls}">${dowHtml}${padHtml}${cellsHtml}</div>`;
+      }
+
+      // Inline detail strip below the month grid. Shows the selected day's
+      // count + goal progress, or a hint to tap a day when none chosen.
+      function renderDayDetail() {
+        if (view.mode !== "month") return "";
+        if (!view.selectedDay) {
+          return `<div class="hm-day-detail subtle">แตะวันเพื่อดูจำนวนคำที่เรียน</div>`;
+        }
+        const key = view.selectedDay;
+        const [yS, mS, dS] = key.split("-");
+        const dObj = new Date(`${key}T00:00:00`);
+        const dow = (dObj.getDay() + 6) % 7; // Monday=0..Sunday=6
+        const count = FStr.getCount(key);
+        const isFuture = key > todayKey;
+        const isToday = key === todayKey;
+        const dPct = isFuture ? 0 : Math.min(100, Math.round((count / Math.max(goal, 1)) * 100));
+        const met = !isFuture && count >= goal;
+        const status = isFuture
+          ? `<span class="subtle">ยังมาไม่ถึง</span>`
+          : met
+            ? `<span class="hm-detail-ok">✓ ครบเป้า</span>`
+            : count === 0
+              ? `<span class="subtle">ยังไม่ได้เรียน</span>`
+              : `<span class="subtle">${dPct}% ของเป้า</span>`;
+        return `
+          <div class="hm-day-detail">
+            <div class="hm-detail-date">
+              วัน${dowLong[dow]} ${parseInt(dS, 10)} ${monthLabels[parseInt(mS, 10) - 1]} ${yS}
+              ${isToday ? `<span class="hm-detail-badge">วันนี้</span>` : ""}
+            </div>
+            <div class="hm-detail-count">
+              <strong>${count}</strong> <span class="subtle">/ ${goal} คำ</span> · ${status}
+            </div>
+            ${!isFuture ? `<div class="progress hm-detail-bar"><div class="bar" style="width:${dPct}%"></div></div>` : ""}
+          </div>
+        `;
+      }
+
+      let calHtml = "";
+      if (view.mode === "year") {
+        const y = view.y;
+        const atCurrentYear = y >= tY;
+        const tiles = [];
+        for (let m = 1; m <= 12; m++) {
+          const isCurrentMonth = (y === tY && m === tM);
+          const isFutureMonth = (y > tY) || (y === tY && m > tM);
+          tiles.push(`
+            <div class="hm-year-tile ${isCurrentMonth ? "is-current" : ""} ${isFutureMonth ? "is-future" : ""}" data-y="${y}" data-m="${m}" role="button" tabindex="0">
+              <div class="hm-year-tile-title">${monthLabels[m - 1]}</div>
+              ${renderMonth(y, m, true)}
+            </div>
+          `);
+        }
+        calHtml = `
+          <div class="hm-nav">
+            <button class="btn ghost hm-nav-btn" data-nav="prev" aria-label="ปีก่อน">‹</button>
+            <div class="hm-nav-title">${y}</div>
+            <button class="btn ghost hm-nav-btn" data-nav="next" ${atCurrentYear ? "disabled" : ""} aria-label="ปีถัดไป">›</button>
+            <button class="btn ghost hm-mode-btn" data-mode="month" title="กลับมุมมองเดือน">📅 เดือน</button>
+          </div>
+          <div class="hm-year-grid">${tiles.join("")}</div>
+        `;
+      } else {
+        const y = view.y, m = view.m;
+        const atCurrent = (y === tY && m === tM);
+        // Reset stale selection when the user navigates to a different month.
+        if (view.selectedDay) {
+          const [syS, smS] = view.selectedDay.split("-");
+          if (parseInt(syS, 10) !== y || parseInt(smS, 10) !== m) {
+            view.selectedDay = null;
+          }
+        }
+        calHtml = `
+          <div class="hm-nav">
+            <button class="btn ghost hm-nav-btn" data-nav="prev" aria-label="เดือนก่อน">‹</button>
+            <div class="hm-nav-title">${monthLabels[m - 1]} ${y}</div>
+            <button class="btn ghost hm-nav-btn" data-nav="next" ${atCurrent ? "disabled" : ""} aria-label="เดือนถัดไป">›</button>
+            <button class="btn ghost hm-mode-btn" data-mode="year" title="ดูภาพรวมทั้งปี">📊 ปี</button>
+          </div>
+          ${renderMonth(y, m, false)}
+          ${renderDayDetail()}
+        `;
+      }
+
+      wrap.innerHTML = `
+        <div class="streak-head">
+          <div class="streak-stat">
+            <span class="streak-flame">${streak > 0 ? "🔥" : "·"}</span>
+            <div>
+              <div class="streak-num">${streak}</div>
+              <div class="streak-sub">วันต่อเนื่อง</div>
+            </div>
+          </div>
+          <div class="streak-stat">
+            <div class="streak-today">
+              <strong>${today}</strong> <span class="subtle">/ ${goal} คำวันนี้</span>
+              <span class="hm-max subtle"> · สูงสุด ${max}/${view.mode === "year" ? "ปี" : "เดือน"}</span>
+            </div>
+            <div class="progress streak-progress"><div class="bar" style="width:${pct}%"></div></div>
+          </div>
+          <button class="btn ghost streak-goal-btn" id="streakGoalBtn" title="ตั้งเป้าหมายต่อวัน">⚙ ตั้งเป้า</button>
+        </div>
+        <div class="heatmap-cal" aria-label="ปฏิทินการเรียนบัตรคำ">${calHtml}</div>
+      `;
+
+      // Nav arrows (prev/next)
+      wrap.querySelectorAll("[data-nav]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          if (btn.disabled) return;
+          const dir = btn.dataset.nav === "next" ? 1 : -1;
+          if (view.mode === "year") {
+            const target = view.y + dir;
+            if (target > tY) return;
+            view.y = target;
+          } else {
+            let m = view.m + dir;
+            let y = view.y;
+            while (m > 12) { m -= 12; y++; }
+            while (m < 1) { m += 12; y--; }
+            if (y > tY || (y === tY && m > tM)) return;
+            view.y = y; view.m = m;
+          }
+          draw();
+        });
+      });
+
+      // Mode toggle (month ↔ year)
+      wrap.querySelectorAll("[data-mode]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          view.mode = btn.dataset.mode;
+          draw();
+        });
+      });
+
+      // Day-cell click (month view) → toggle selection + show detail
+      wrap.querySelectorAll(".hm-cell[data-day]").forEach((cell) => {
+        cell.addEventListener("click", () => {
+          const key = cell.dataset.day;
+          view.selectedDay = (view.selectedDay === key) ? null : key;
+          draw();
+        });
+      });
+
+      // Year-tile click → drill into that month
+      wrap.querySelectorAll(".hm-year-tile").forEach((tile) => {
+        const open = () => {
+          if (tile.classList.contains("is-future")) return;
+          view.y = parseInt(tile.dataset.y, 10);
+          view.m = parseInt(tile.dataset.m, 10);
+          view.mode = "month";
+          draw();
+        };
+        tile.addEventListener("click", open);
+        tile.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
+        });
+      });
+
+      const goalBtn = wrap.querySelector("#streakGoalBtn");
+      if (goalBtn) goalBtn.addEventListener("click", () => {
+        const cur = FStr.getGoal();
+        const v = prompt("ตั้งเป้าหมายจำนวนคำต่อวัน (1–500):", String(cur));
+        if (v == null) return;
+        const n = parseInt(v, 10);
+        if (!Number.isFinite(n) || n < 1 || n > 500) {
+          alert("กรุณาใส่ตัวเลขระหว่าง 1 ถึง 500");
+          return;
+        }
+        FStr.setGoal(n);
+        draw();
+      });
+    }
+    draw();
+    // Auto-refresh when streak changes elsewhere (e.g. cloud pull).
+    if (window.FlashcardsStreak) {
+      const unsub = window.FlashcardsStreak.subscribe(() => {
+        if (wrap.isConnected) draw(); else unsub();
+      });
+    }
+    return wrap;
+  }
+
   /* ===================== HOME (folder + deck browser) ===================== */
   function renderHome() {
     const data = FS().load();
@@ -109,8 +374,12 @@ window.FlashcardsView = (function () {
         </div>
       </div>
       <p class="subtle">${folder ? "ชุดคำในโฟลเดอร์นี้" : "โฟลเดอร์และชุดคำที่ยังไม่จัดเข้าโฟลเดอร์"}</p>
+      <div id="fc-streak-slot"></div>
       <div id="fc-body"></div>
     `;
+    if (!state.folderId) {
+      root.querySelector("#fc-streak-slot").appendChild(renderStreakPanel());
+    }
     const body = root.querySelector("#fc-body");
 
     if (!state.folderId && data.folders.length) {
