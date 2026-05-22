@@ -156,7 +156,7 @@ window.FlashcardsView = (function () {
               <div class="progress ${c.allDone && learnTotal > 0 ? "ok" : ""}"><div class="bar" style="width:${learnPct}%"></div></div>
             </div>
           </div>
-          ${c.allDone ? `<div class="daily-done">✓ ครบคำประจำวันแล้ว เก่งมาก!</div>` : ""}
+          ${c.allDone ? `<div class="daily-done">✓ คำประจำวันครบแล้ว เก่งมาก!</div>` : ""}
           <div class="btn-row daily-actions">
             <button class="btn primary" id="dailyStartCards" ${c.cardsRemaining === 0 ? "disabled" : ""}>${cardsLabel}</button>
             <button class="btn" id="dailyStartLearn" ${learnEnabled ? "" : "disabled"}>${learnLabel}</button>
