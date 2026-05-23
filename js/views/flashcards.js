@@ -22,7 +22,13 @@ window.FlashcardsView = (function () {
     deckId: null,
     cardsOpts: { shuffle: false, swap: false, starredOnly: false, autoSpeak: false },
     learnOpts: { swap: false, starredOnly: false, autoSpeak: false },
-    dailyOpts: { swap: false, autoSpeak: false }
+    dailyOpts: { swap: false, autoSpeak: false },
+    reviewLearnOpts: { swap: false, autoSpeak: false },
+    // When set, "reviewLearn" screen is active: a Learn detour over a
+    // specific subset of wordIds (the cards the user marked "ยังไม่ได้"
+    // at the end of a flash-card round). On completion, control returns
+    // to the cards screen with those same words queued as the next round.
+    reviewLearn: null
   };
 
   /* ---------- utils ---------- */
@@ -83,6 +89,7 @@ window.FlashcardsView = (function () {
     else if (state.screen === "deck")  root.appendChild(renderDeck());
     else if (state.screen === "cards") root.appendChild(renderCards());
     else if (state.screen === "learn") root.appendChild(renderLearn());
+    else if (state.screen === "reviewLearn") root.appendChild(renderReviewLearn());
     else if (state.screen === "dailyCards") root.appendChild(renderDailyCards());
     else if (state.screen === "dailyLearn") root.appendChild(renderDailyLearn());
     return root;
@@ -1165,6 +1172,9 @@ window.FlashcardsView = (function () {
       // No cards left in this round
       if (queueIds.length === 0) {
         const allDone = wrongIds.length === 0;
+        // Learn detour requires ≥4 words in the deck for MCQ distractors,
+        // and at least one "ยังไม่ได้" card to review.
+        const canLearnReview = !allDone && FS().getDeck(deck.id).words.length >= 4;
         root.innerHTML = `
           ${renderHeader()}
           ${renderToolbar()}
@@ -1175,14 +1185,15 @@ window.FlashcardsView = (function () {
               <h2 style="margin:0;">${allDone ? "เก่งมาก! ตอบได้ครบทุกคำแล้ว" : "จบรอบนี้แล้ว"}</h2>
               <p class="subtle">${allDone
                 ? "ทบทวน " + total + " คำสำเร็จ"
-                : "ยังต้องทบทวนอีก " + wrongIds.length + " คำ"}</p>
+                : "ยังต้องทบทวนอีก " + wrongIds.length + " คำ — เลือกว่าจะทำ Flash Card ต่อ หรือ Learn ก่อน"}</p>
             </div>
             <div class="score-num">${allDone ? "✓" : wrongIds.length}</div>
           </div>
           <div class="btn-row">
             ${allDone
               ? `<button class="btn primary" id="restartAll">เริ่มชุดย่อยนี้ใหม่</button>`
-              : `<button class="btn primary" id="nextRound">ทบทวนเฉพาะ ${wrongIds.length} คำที่เหลือ →</button>`}
+              : `<button class="btn primary" id="nextRound">📇 ทบทวน Flash Card อีก ${wrongIds.length} คำ →</button>
+                 ${canLearnReview ? `<button class="btn" id="learnFirst">🎯 ทำ Learn ${wrongIds.length} คำนี้ก่อน</button>` : ""}`}
             ${history.length ? `<button class="btn" id="undoEnd">↶ ย้อนกลับ</button>` : ""}
             <button class="btn ghost" id="back2">กลับสู่ชุดคำ</button>
           </div>
@@ -1192,6 +1203,15 @@ window.FlashcardsView = (function () {
         if (undoEndBtn) undoEndBtn.addEventListener("click", undo);
         if (!allDone) {
           root.querySelector("#nextRound").addEventListener("click", startNextRound);
+          const learnFirstBtn = root.querySelector("#learnFirst");
+          if (learnFirstBtn) learnFirstBtn.addEventListener("click", () => {
+            state.reviewLearn = {
+              wordIds: wrongIds.slice(),
+              deckId: deck.id
+            };
+            state.screen = "reviewLearn";
+            refresh(root);
+          });
         } else {
           root.querySelector("#restartAll").addEventListener("click", () => {
             const ids = pool.map((w) => w.id);
@@ -1784,6 +1804,258 @@ window.FlashcardsView = (function () {
       clearAutoAdvance();
       window.speechSynthesis && window.speechSynthesis.cancel();
       state.screen = "deck"; refresh(root);
+    }
+
+    draw();
+    return root;
+  }
+
+  /* ===================== REVIEW LEARN (detour from Flash Cards) =====================
+   * Launched from the end-of-round Flash Cards screen when the user picks
+   * "ทำ Learn ของคำที่ยังไม่ได้ก่อน". Operates on a fixed in-memory subset
+   * of wordIds (state.reviewLearn.wordIds) without disturbing the deck's
+   * persistent learn queue. Wrong answers cycle back; on completion, the
+   * user is dropped back into Flash Cards with the same subset queued for
+   * a fresh round.
+   */
+  function renderReviewLearn() {
+    const rl = state.reviewLearn;
+    const root = document.createElement("div");
+    if (!rl || !rl.deckId || !Array.isArray(rl.wordIds) || rl.wordIds.length === 0) {
+      state.reviewLearn = null;
+      state.screen = "deck";
+      const fresh = renderDeck();
+      root.appendChild(fresh);
+      return root;
+    }
+    const deck = FS().getDeck(rl.deckId);
+    if (!deck || deck.words.length < 4) {
+      state.reviewLearn = null;
+      state.screen = "cards";
+      const fresh = renderCards();
+      root.appendChild(fresh);
+      return root;
+    }
+
+    function wordById(wid) {
+      const d = FS().getDeck(rl.deckId);
+      return d ? d.words.find((w) => w.id === wid) || null : null;
+    }
+    function frontOf(w) { return state.reviewLearnOpts.swap ? w.back : w.front; }
+    function backOf(w)  { return state.reviewLearnOpts.swap ? w.front : w.back; }
+
+    // In-memory queue (no persistence to deck's learn round state).
+    let queue = shuffleArr(rl.wordIds.filter((id) => wordById(id) != null));
+    const initialTotal = queue.length;
+    let learnDone = 0;
+    let answeredThis = false;
+    let autoAdvanceTimer = null;
+    let lastSpokenWid = null;
+
+    function clearAutoAdvance() {
+      if (autoAdvanceTimer) { clearTimeout(autoAdvanceTimer); autoAdvanceTimer = null; }
+    }
+    function maybeAutoSpeak(force) {
+      if (!state.reviewLearnOpts.autoSpeak) return;
+      const wid = queue[0];
+      if (!wid) return;
+      const w = wordById(wid);
+      if (!w) return;
+      const text = frontOf(w);
+      if (!hasJapanese(text)) return;
+      if (!force && wid === lastSpokenWid) return;
+      lastSpokenWid = wid;
+      speak(text, "ja-JP");
+    }
+    function renderHeader() {
+      return `
+        <div class="qmeta">
+          <h2 style="margin:0;">🎯 ทบทวน · Learn ก่อนกลับไป Flash Card</h2>
+          <button class="btn ghost" id="back">← กลับ</button>
+        </div>
+        <p class="subtle">${escapeHtml(deck.name)} · เฉพาะคำที่ "ยังไม่ได้" (${initialTotal} คำ)</p>
+      `;
+    }
+    function renderToolbar() {
+      return `
+        <div class="fc-toolbar fc-toolbar-sticky">
+          <label class="fc-toggle"><input type="checkbox" data-opt="swap" ${state.reviewLearnOpts.swap ? "checked" : ""}/> สลับด้าน</label>
+          <label class="fc-toggle"><input type="checkbox" data-opt="autoSpeak" ${state.reviewLearnOpts.autoSpeak ? "checked" : ""}/> 🔊 อ่านอัตโนมัติ</label>
+        </div>
+      `;
+    }
+    function bindToolbar() {
+      root.querySelectorAll(".fc-toolbar input[data-opt]").forEach((cb) => {
+        cb.addEventListener("change", () => {
+          state.reviewLearnOpts[cb.dataset.opt] = cb.checked;
+          if (cb.dataset.opt === "autoSpeak") {
+            if (!cb.checked) window.speechSynthesis && window.speechSynthesis.cancel();
+            else maybeAutoSpeak(true);
+          } else {
+            draw();
+          }
+        });
+      });
+    }
+    function bindHeader() { root.querySelector("#back").addEventListener("click", goBack); }
+    function goBack() {
+      clearAutoAdvance();
+      window.speechSynthesis && window.speechSynthesis.cancel();
+      // Back returns to the flash-card end-of-round screen the user came
+      // from. The deck's cards.queueIds is still [] and wrongIds populated,
+      // so that screen will render again.
+      state.reviewLearn = null;
+      state.screen = "cards";
+      refresh(root);
+    }
+    function returnToCards() {
+      clearAutoAdvance();
+      window.speechSynthesis && window.speechSynthesis.cancel();
+      // Drop deleted words and reseed the flash-card round with the review
+      // subset as the new queue. Mirrors what startNextRound() would do.
+      const freshDeck = FS().getDeck(rl.deckId);
+      const ids = freshDeck
+        ? rl.wordIds.filter((id) => freshDeck.words.some((w) => w.id === id))
+        : rl.wordIds.slice();
+      const queueForCards = state.cardsOpts.shuffle ? shuffleArr(ids) : ids;
+      FS().setCardsRound(rl.deckId, {
+        queueIds: queueForCards,
+        wrongIds: [],
+        roundTotal: queueForCards.length
+      });
+      state.reviewLearn = null;
+      state.screen = "cards";
+      refresh(root);
+    }
+
+    function makeChoices(word) {
+      const all = deck.words.filter((w) => w.id !== word.id);
+      const targetAns = backOf(word);
+      const candidates = all.filter((w) => backOf(w) && backOf(w) !== targetAns);
+      const picked = [];
+      const pool = shuffleArr(candidates);
+      for (const w of pool) {
+        if (picked.length >= 3) break;
+        if (picked.some((p) => backOf(p) === backOf(w))) continue;
+        picked.push(w);
+      }
+      return shuffleArr([word, ...picked]).map((w) => ({
+        text: backOf(w),
+        correct: w.id === word.id
+      }));
+    }
+
+    function draw() {
+      if (initialTotal === 0) {
+        root.innerHTML = `
+          ${renderHeader()}
+          <div class="empty">ไม่มีคำให้ทบทวน</div>
+          <div class="btn-row">
+            <button class="btn ghost" id="back2">กลับสู่ Flash Card</button>
+          </div>
+        `;
+        bindHeader();
+        root.querySelector("#back2").addEventListener("click", goBack);
+        return;
+      }
+      if (queue.length === 0) {
+        root.innerHTML = `
+          ${renderHeader()}
+          ${renderToolbar()}
+          <div class="qprog">เสร็จ ${learnDone} / ${initialTotal}</div>
+          <div class="progress ok"><div class="bar" style="width:100%"></div></div>
+          <div class="score-card">
+            <div>
+              <h2 style="margin:0;">Learn ครบแล้ว!</h2>
+              <p class="subtle">กลับไปทบทวน Flash Card ของ ${initialTotal} คำนี้ต่อ</p>
+            </div>
+            <div class="score-num">✓</div>
+          </div>
+          <div class="btn-row">
+            <button class="btn primary" id="returnCards">↩ กลับไปทำ Flash Card →</button>
+            <button class="btn ghost" id="back2">กลับสู่ชุดคำ</button>
+          </div>
+        `;
+        bindHeader(); bindToolbar();
+        root.querySelector("#returnCards").addEventListener("click", returnToCards);
+        root.querySelector("#back2").addEventListener("click", () => {
+          clearAutoAdvance();
+          window.speechSynthesis && window.speechSynthesis.cancel();
+          state.reviewLearn = null;
+          state.screen = "deck";
+          refresh(root);
+        });
+        return;
+      }
+      const wid = queue[0];
+      const w = wordById(wid);
+      if (!w) { queue.shift(); return draw(); }
+      const choices = makeChoices(w);
+      const idx = learnDone + 1;
+      const pct = initialTotal ? Math.round((learnDone / initialTotal) * 100) : 0;
+
+      root.innerHTML = `
+        ${renderHeader()}
+        ${renderToolbar()}
+        <div class="qprog">${idx} / ${initialTotal} · ผ่านแล้ว ${learnDone}${queue.length > 1 && idx <= initialTotal ? ` · ในคิว ${queue.length}` : ""}</div>
+        <div class="progress"><div class="bar" style="width:${pct}%"></div></div>
+        <div class="card">
+          <div class="fc-learn-prompt">
+            <div class="fc-learn-q">${escapeHtml(frontOf(w))}</div>
+            <button class="btn ghost fc-speak" id="speakBtn" title="ออกเสียง">🔊</button>
+          </div>
+          <div id="choices">
+            ${choices.map((c, i) => `
+              <button class="choice" data-i="${i}" data-correct="${c.correct ? 1 : 0}">${escapeHtml(c.text)}</button>
+            `).join("")}
+          </div>
+          <div id="fb"></div>
+          <div class="btn-row" style="justify-content:flex-end;">
+            <button class="btn primary" id="next" style="display:none;">ถัดไป →</button>
+          </div>
+        </div>
+      `;
+      bindHeader(); bindToolbar();
+      answeredThis = false;
+      clearAutoAdvance();
+      root.querySelector("#speakBtn").addEventListener("click", () => speak(frontOf(w)));
+      maybeAutoSpeak();
+
+      const choiceBtns = root.querySelectorAll(".choice");
+      const nextBtn = root.querySelector("#next");
+      function advance() {
+        clearAutoAdvance();
+        draw();
+      }
+      choiceBtns.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          if (answeredThis) return;
+          answeredThis = true;
+          const wasCorrect = btn.dataset.correct === "1";
+          choiceBtns.forEach((b) => {
+            b.classList.add("disabled");
+            if (b.dataset.correct === "1") b.classList.add("correct");
+            else if (b === btn) b.classList.add("wrong");
+          });
+          const fb = root.querySelector("#fb");
+          // Mark completed on correct so the deck's Learn progress reflects
+          // the work done here (the user demonstrated they know the meaning).
+          FS().recordLearnAttempt(rl.deckId, w.id, wasCorrect, { markCompleted: wasCorrect });
+          if (wasCorrect) {
+            queue.shift();
+            learnDone++;
+            fb.innerHTML = `<div class="feedback ok"><strong>ถูกต้อง ✓</strong></div>`;
+          } else {
+            // Cycle wrong word to the back of the queue.
+            queue.push(queue.shift());
+            fb.innerHTML = `<div class="feedback bad"><strong>ยังไม่ถูก ✗</strong>
+              <div style="margin-top:4px;">เฉลย: ${escapeHtml(backOf(w))} — จะถูกถามอีกครั้งภายหลัง</div></div>`;
+          }
+          nextBtn.style.display = "inline-block";
+          autoAdvanceTimer = setTimeout(advance, wasCorrect ? 700 : 1800);
+        });
+      });
+      nextBtn.addEventListener("click", advance);
     }
 
     draw();
