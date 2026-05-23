@@ -1184,6 +1184,27 @@ h3 { margin: 0 0 6px; font-size: 16px; }
 .fc-chunk-actions { display: flex; gap: 8px; margin-top: 10px; }
 .fc-chunk-actions .btn { padding: 4px 10px; font-size: 12px; }
 
+/* Dictation: inline chunk panel inside home deck cards */
+.dict-chunk-panel {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--glass-border);
+}
+.dict-chunk-panel[hidden] { display: none; }
+
+/* Dictation: read-mode hint chips */
+.dict-hint { margin-top: 10px; }
+.dict-hint-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.dict-hint-opt {
+  font-size: 18px;
+  padding: 10px 12px;
+  font-family: inherit;
+}
+
 .fc-mode-row {
   display: flex; gap: 14px; align-items: center; justify-content: space-between;
   flex-wrap: wrap;
