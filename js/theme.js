@@ -51,6 +51,15 @@
       orb2:   "rgba(255, 158, 122, 0.45)",
       orb3:   "rgba(210, 74, 60, 0.40)",
     },
+    kurenai: {
+      label: "紅",
+      accent: "#ff6b7a",
+      strong: "#e84855",
+      deep:   "#b3122a",
+      orb1:   "rgba(232, 72, 85, 0.55)",
+      orb2:   "rgba(255, 107, 122, 0.45)",
+      orb3:   "rgba(179, 18, 42, 0.40)",
+    },
     kogane: {
       label: "黄金",
       accent: "#f5d36b",
