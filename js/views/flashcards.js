@@ -794,22 +794,18 @@ window.FlashcardsView = (function () {
         </div>
       `).join("");
 
-      list.querySelectorAll("[data-star]").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const wid = btn.closest(".fc-word").dataset.id;
+      if (list._fcDelegated) return;
+      list._fcDelegated = true;
+      list.addEventListener("click", (e) => {
+        const row = e.target.closest(".fc-word");
+        if (!row || !list.contains(row)) return;
+        const wid = row.dataset.id;
+        if (e.target.closest("[data-star]")) {
           FS().toggleStar(deck.id, wid);
           draw();
-        });
-      });
-      list.querySelectorAll("[data-del]").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const wid = btn.closest(".fc-word").dataset.id;
+        } else if (e.target.closest("[data-del]")) {
           if (confirm("ลบคำนี้?")) { FS().deleteWord(deck.id, wid); draw(); }
-        });
-      });
-      list.querySelectorAll("[data-edit]").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const wid = btn.closest(".fc-word").dataset.id;
+        } else if (e.target.closest("[data-edit]")) {
           const w = FS().getDeck(deck.id).words.find((x) => x.id === wid);
           const f = prompt("ด้านหน้า:", w.front);
           if (f == null) return;
@@ -817,7 +813,7 @@ window.FlashcardsView = (function () {
           if (b == null) return;
           FS().updateWord(deck.id, wid, f, b);
           draw();
-        });
+        }
       });
     }
 

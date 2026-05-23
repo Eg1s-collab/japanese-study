@@ -983,6 +983,8 @@ h3 { margin: 0 0 6px; font-size: 16px; }
   align-items: center;
   padding: 10px 4px;
   border-bottom: 1px solid var(--line);
+  content-visibility: auto;
+  contain-intrinsic-size: 0 56px;
 }
 .fc-word:last-child { border-bottom: none; }
 .fc-word-text { min-width: 0; }
