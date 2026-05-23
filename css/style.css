@@ -1871,3 +1871,163 @@ h3 { margin: 0 0 6px; font-size: 16px; }
   .pt-keypad { grid-template-columns: repeat(4, 1fr); }
   .pt-chip { flex: 1 1 calc(50% - 8px); justify-content: center; }
 }
+
+/* ---------- Arrange (เรียงประโยค · 並び替え) ---------- */
+.arr-howto {
+  margin: 0; padding-left: 18px;
+  display: grid; gap: 6px;
+  font-size: 13px; color: var(--ink); opacity: .92; line-height: 1.55;
+}
+.arr-howto b { color: var(--accent-strong); }
+
+.arr-meaning {
+  display: flex; align-items: baseline; gap: 10px;
+  margin: 0 0 12px 0;
+  flex-wrap: wrap;
+}
+.arr-meaning-label {
+  font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--line);
+}
+.arr-meaning-th {
+  font-size: 17px; color: var(--ink); line-height: 1.5;
+}
+.arr-meaning-hidden {
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex; align-items: center; gap: 10px;
+}
+.arr-meaning-label.is-locked {
+  background: var(--accent-softer);
+  color: var(--accent-strong);
+  border-color: var(--accent-border);
+}
+.arr-peek {
+  font-family: inherit;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  color: var(--ink);
+  cursor: pointer;
+  margin-left: auto;
+  -webkit-tap-highlight-color: transparent;
+}
+.arr-peek:hover { background: var(--glass-bg-strong); border-color: var(--accent); }
+.arr-peek:active { transform: translateY(1px); }
+
+.arr-mode-row { margin-top: 12px; }
+.arr-mode-toggle {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 10px;
+  row-gap: 2px;
+  align-items: center;
+  padding: 10px 14px;
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  background: var(--glass-bg);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.arr-mode-toggle:hover { background: var(--glass-bg-strong); border-color: var(--accent); }
+.arr-mode-toggle.on {
+  background: var(--accent-softer);
+  border-color: var(--accent);
+}
+.arr-mode-toggle input[type=checkbox] {
+  accent-color: var(--accent);
+  width: 18px; height: 18px;
+  grid-row: span 2;
+}
+.arr-mode-jp {
+  font-size: 15px; font-weight: 700; color: var(--ink);
+}
+.arr-mode-toggle.on .arr-mode-jp { color: var(--accent-strong); }
+.arr-mode-sub {
+  font-size: 12px; color: var(--muted);
+  grid-column: 2;
+  line-height: 1.45;
+}
+
+.arr-answer, .arr-bank {
+  display: flex; flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  min-height: 60px;
+  align-content: flex-start;
+}
+.arr-answer {
+  background: linear-gradient(180deg, var(--accent-softer), rgba(0, 0, 0, 0.18));
+  border: 1px dashed var(--accent-border);
+  margin-bottom: 10px;
+}
+.arr-bank {
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid var(--line);
+}
+.arr-answer-placeholder {
+  color: var(--muted);
+  font-size: 13px;
+  align-self: center;
+  margin: auto;
+  font-style: italic;
+}
+
+.arr-card {
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: inherit;
+  font-size: 19px; font-weight: 600;
+  color: var(--ink);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
+  transition: background .15s ease, border-color .15s ease, transform .08s ease, opacity .15s ease;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  user-select: none;
+}
+.arr-card:hover { background: var(--glass-bg-strong); border-color: var(--accent); }
+.arr-card:active { transform: translateY(1px); }
+.arr-card.is-dist {
+  /* Distractors — same look in the bank (no leak) but a subtle dash hint */
+  border-style: dashed;
+}
+.arr-card.is-dragging {
+  opacity: .45;
+  border-color: var(--accent);
+}
+.arr-card.is-locked { cursor: default; }
+.arr-card.is-correct {
+  background: var(--ok-soft);
+  border-color: rgba(110, 231, 160, .55);
+  color: var(--ok);
+}
+.arr-card.is-wrong {
+  background: var(--bad-soft);
+  border-color: rgba(255, 138, 138, .55);
+  color: var(--bad);
+}
+.arr-card.is-revealed {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+.qmeta-right .daily-pill + .daily-pill { margin-left: 6px; }
+
+@media (max-width: 540px) {
+  .arr-card { font-size: 17px; padding: 9px 12px; }
+  .arr-meaning-th { font-size: 16px; }
+}
