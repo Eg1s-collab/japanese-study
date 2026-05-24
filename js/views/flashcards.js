@@ -1373,6 +1373,31 @@ window.FlashcardsView = (function () {
       state.screen = "deck"; refresh(root);
     }
 
+    // Keyboard shortcuts: ← = ยังไม่ได้, → = ผ่าน, ↑/↓ = พลิก. Self-removes
+    // once the view is detached so we don't leak listeners across screens.
+    function onKey(e) {
+      if (!document.body.contains(root)) {
+        document.removeEventListener("keydown", onKey);
+        return;
+      }
+      const t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (animating) return;
+      if (queueIds.length === 0) return;
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        animateOut(1, () => commit("known"));
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        animateOut(-1, () => commit("unknown"));
+      } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+        e.preventDefault();
+        flipped = !flipped; draw();
+      }
+    }
+    document.addEventListener("keydown", onKey);
+
     draw();
     return root;
   }
@@ -2353,6 +2378,31 @@ window.FlashcardsView = (function () {
         cardEl.classList.remove("hint-right", "hint-left");
       });
     }
+
+    // Keyboard shortcuts: ← = ยังไม่ได้, → = ผ่าน, ↑/↓ = พลิก. Self-removes
+    // once the view is detached so we don't leak listeners across screens.
+    function onKey(e) {
+      if (!document.body.contains(root)) {
+        document.removeEventListener("keydown", onKey);
+        return;
+      }
+      const t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (animating) return;
+      if (queue.length === 0) return;
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        animateOut(1, () => commit("known"));
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        animateOut(-1, () => commit("unknown"));
+      } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+        e.preventDefault();
+        flipped = !flipped; draw();
+      }
+    }
+    document.addEventListener("keydown", onKey);
 
     draw();
     return root;
