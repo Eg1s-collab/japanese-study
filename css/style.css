@@ -54,41 +54,50 @@ body {
   overflow-x: clip;
 }
 
-/* ---------- Ambient (color orbs + faint kanji) ---------- */
+/* ---------- Ambient (color orbs + faint kanji) ----------
+ * Perf notes: `filter: blur()` on huge animated elements is extremely
+ * expensive on iOS Safari (re-rasterizes every frame). We rely purely
+ * on a soft radial-gradient + a one-time GPU layer promotion via
+ * translate3d, and animate ONLY `transform` (no scale → no filter
+ * recompute, no layout). On phones/tablets the animation is disabled
+ * so the orbs stay static for zero ongoing GPU cost. */
 .ambient {
   position: fixed; inset: 0;
   pointer-events: none;
   z-index: 0;
   overflow: hidden;
+  /* isolate paints from main page → main content scroll won't repaint orbs */
+  contain: strict;
 }
 .ambient-orb {
   position: absolute;
   border-radius: 50%;
-  filter: blur(90px);
-  opacity: 0.35;
-  animation: orb-float 22s ease-in-out infinite alternate;
+  opacity: 0.32;
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
+  animation: orb-float 28s ease-in-out infinite alternate;
 }
 .ambient-orb-1 {
-  width: 460px; height: 460px;
-  background: radial-gradient(circle, var(--orb-1), transparent 70%);
-  top: -120px; left: -120px;
+  width: 520px; height: 520px;
+  background: radial-gradient(circle, var(--orb-1) 0%, transparent 65%);
+  top: -160px; left: -160px;
 }
 .ambient-orb-2 {
-  width: 520px; height: 520px;
-  background: radial-gradient(circle, var(--orb-2), transparent 70%);
-  top: 30vh; right: -160px;
-  animation-delay: -8s;
+  width: 580px; height: 580px;
+  background: radial-gradient(circle, var(--orb-2) 0%, transparent 65%);
+  top: 28vh; right: -200px;
+  animation-delay: -10s;
 }
 .ambient-orb-3 {
-  width: 400px; height: 400px;
-  background: radial-gradient(circle, var(--orb-3), transparent 70%);
-  bottom: -120px; left: 30vw;
-  animation-delay: -14s;
+  width: 460px; height: 460px;
+  background: radial-gradient(circle, var(--orb-3) 0%, transparent 65%);
+  bottom: -160px; left: 28vw;
+  animation-delay: -18s;
 }
 @keyframes orb-float {
-  0%   { transform: translate(0, 0) scale(1); }
-  50%  { transform: translate(40px, -30px) scale(1.08); }
-  100% { transform: translate(-30px, 40px) scale(0.95); }
+  0%   { transform: translate3d(0, 0, 0); }
+  50%  { transform: translate3d(40px, -30px, 0); }
+  100% { transform: translate3d(-30px, 40px, 0); }
 }
 
 .ambient-kanji {
@@ -106,7 +115,57 @@ body {
 /* keep content above ambient layer */
 .topbar, .tabs, main, .foot { position: relative; z-index: 1; }
 
-/* ---------- Liquid glass surface ---------- */
+/* ============================================================
+ * Performance opt-outs (mobile blur, reduced motion, reduced transparency)
+ *
+ * iOS Safari is the worst-case target: every backdrop-filter element forces
+ * a re-rasterization of the content behind it, and the cost compounds when
+ * many glass cards stack. On any device that signals "coarse pointer"
+ * (touch — phones, iPads, hybrid laptops in tablet mode) we drop the global
+ * `--glass-blur` to a much cheaper value, and on phone widths we kill it
+ * entirely (an opaque tint reads almost identical at 22px blur but costs ~0).
+ *
+ * We also honor the standard a11y media queries:
+ *   - prefers-reduced-motion: stop all infinite animations
+ *   - prefers-reduced-transparency: drop backdrop-filter, use solid bg
+ * ============================================================ */
+@media (any-pointer: coarse) {
+  :root {
+    /* 22px blur + 160% saturate → just 8px, no saturate (≈ 4× cheaper) */
+    --glass-blur: blur(8px);
+  }
+}
+@media (max-width: 600px) {
+  :root {
+    /* Phone: drop backdrop-filter entirely, lean on the tinted background.
+     * Visually nearly identical on tiny screens, removes a major GPU cost. */
+    --glass-blur: none;
+    --glass-bg: rgba(20, 16, 28, 0.72);
+    --glass-bg-strong: rgba(28, 22, 38, 0.82);
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --glass-blur: none;
+    --glass-bg: rgba(20, 16, 28, 0.92);
+    --glass-bg-strong: rgba(28, 22, 38, 0.96);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .ambient-orb { animation: none; }
+}
+
+/* ---------- Liquid glass surface ----------
+ * Perf: `contain: paint` scopes the heavy backdrop-filter rasterization
+ * to this box so unrelated repaints (typing, hover elsewhere) don't
+ * force a redraw of the blurred backing. Combined with the mobile
+ * fallback below, this keeps glass surfaces cheap on iPad/iPhone. */
 .glass {
   position: relative;
   background: var(--glass-bg);
@@ -117,6 +176,7 @@ body {
     0 8px 32px rgba(0, 0, 0, 0.35),
     inset 0 1px 0 var(--glass-highlight),
     inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+  contain: paint;
 }
 .glass::before {
   content: "";
@@ -141,6 +201,11 @@ body {
   border-radius: 20px;
   max-width: 1280px;
   margin-left: auto; margin-right: auto;
+  /* sticky + backdrop-filter is a known scroll-jank source on iOS — keep
+   * the topbar on its own compositor layer so scrolling the page below
+   * doesn't re-rasterize the blurred glass each frame. */
+  transform: translateZ(0);
+  will-change: transform;
 }
 .topbar.glass {
   border: 1px solid var(--glass-border);
@@ -443,6 +508,7 @@ main { padding: 24px 20px 16px; max-width: 1280px; margin: 0 auto; }
     inset 0 1px 0 var(--glass-highlight);
   transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease, background .2s ease;
   overflow: hidden;
+  contain: paint;
 }
 .card::before {
   content: "";
@@ -462,7 +528,14 @@ h3 { margin: 0 0 6px; font-size: 16px; }
 .subtle { color: var(--muted); font-size: 13px; }
 
 .unit-list { display:grid; grid-template-columns: repeat(auto-fill,minmax(260px,1fr)); gap: 14px; }
-.unit-card { cursor:pointer; position: relative; transition: transform .2s ease, box-shadow .2s ease, opacity .15s ease, border-color .15s ease, background .2s ease; }
+.unit-card {
+  cursor:pointer; position: relative;
+  transition: transform .2s ease, box-shadow .2s ease, opacity .15s ease, border-color .15s ease, background .2s ease;
+  /* Skip rendering off-screen unit cards. Reserves 180px so the scrollbar
+   * doesn't jump as cards paint in. Big win for N5/N4 long lists. */
+  content-visibility: auto;
+  contain-intrinsic-size: 0 180px;
+}
 .unit-card:hover {
   transform: translateY(-3px);
   box-shadow:
@@ -933,7 +1006,9 @@ h3 { margin: 0 0 6px; font-size: 16px; }
   .tab { padding: 9px 12px; font-size: 13px; min-height: 38px; }
   .tab .tab-jp { font-size: 15px; }
   .ambient-kanji { display: none; }
-  .ambient-orb { filter: blur(70px); opacity: 0.25; }
+  /* Phone: drop the infinite orb animation entirely — static gradients are
+   * effectively free, the animation is the GPU hog. Also shrink slightly. */
+  .ambient-orb { opacity: 0.22; animation: none; will-change: auto; }
   .kana-keyboard { padding: 6px; }
   .kana-grid { gap: 4px; }
   .kana-key { height: 44px; font-size: 20px; border-radius: 8px; }
@@ -1242,23 +1317,18 @@ h3 { margin: 0 0 6px; font-size: 16px; }
   .fc-chunk-stat { font-size: 9px; }
 }
 
-/* ===== Learn: on-fire streak banner ===== */
-@keyframes fc-fire-pulse {
-  0%, 100% {
-    box-shadow:
-      0 0 14px rgba(255, 138, 42, 0.55),
-      inset 0 0 10px rgba(255, 200, 90, 0.25);
-  }
-  50% {
-    box-shadow:
-      0 0 28px rgba(255, 138, 42, 0.95),
-      inset 0 0 18px rgba(255, 200, 90, 0.55);
-  }
+/* ===== Learn: on-fire streak banner =====
+ * Perf: the pulse used to animate `box-shadow` directly which forces a
+ * paint on every frame. We now keep a static box-shadow and animate the
+ * `opacity` of a pseudo-element glow instead — compositor-only, ~free. */
+@keyframes fc-fire-pulse-opacity {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1;    }
 }
 @keyframes fc-flame-flicker {
-  0%   { transform: translateY(0) scale(1)    rotate(-3deg); }
-  50%  { transform: translateY(-2px) scale(1.18) rotate(3deg); }
-  100% { transform: translateY(0) scale(1.05) rotate(-2deg); }
+  0%   { transform: translate3d(0, 0, 0)    scale(1)    rotate(-3deg); }
+  50%  { transform: translate3d(0, -2px, 0) scale(1.18) rotate(3deg); }
+  100% { transform: translate3d(0, 0, 0)    scale(1.05) rotate(-2deg); }
 }
 @keyframes fc-fire-ignite {
   0%   { transform: scale(0.6); opacity: 0; }
@@ -1266,6 +1336,7 @@ h3 { margin: 0 0 6px; font-size: 16px; }
   100% { transform: scale(1);    opacity: 1; }
 }
 .fc-on-fire {
+  position: relative;
   display: flex; align-items: center; justify-content: center; gap: 10px;
   margin: 12px 0;
   padding: 10px 16px;
@@ -1276,10 +1347,24 @@ h3 { margin: 0 0 6px; font-size: 16px; }
   font-weight: 700;
   letter-spacing: 0.4px;
   text-shadow: 0 0 10px rgba(255, 138, 42, 0.55);
-  animation: fc-fire-pulse 1.4s ease-in-out infinite;
+  box-shadow:
+    0 0 14px rgba(255, 138, 42, 0.55),
+    inset 0 0 10px rgba(255, 200, 90, 0.25);
+  isolation: isolate;
+}
+.fc-on-fire::before {
+  content: "";
+  position: absolute; inset: -2px;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow:
+    0 0 28px rgba(255, 138, 42, 0.95),
+    inset 0 0 18px rgba(255, 200, 90, 0.55);
+  animation: fc-fire-pulse-opacity 1.4s ease-in-out infinite;
+  will-change: opacity;
 }
 .fc-on-fire.is-igniting {
-  animation: fc-fire-ignite 0.55s cubic-bezier(0.16, 1.2, 0.34, 1) 1, fc-fire-pulse 1.4s ease-in-out 0.55s infinite;
+  animation: fc-fire-ignite 0.55s cubic-bezier(0.16, 1.2, 0.34, 1) 1;
 }
 .fc-on-fire-flame {
   display: inline-block;
