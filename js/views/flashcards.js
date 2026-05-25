@@ -1245,6 +1245,10 @@ window.FlashcardsView = (function () {
       const roundDone = Math.max(0, roundTotal - queueIds.length);
       const roundPct = roundTotal ? Math.round((roundDone / roundTotal) * 100) : 0;
 
+      // "Skip ahead to Learn" shortcut — needs ≥4 deck words for MCQ.
+      const remainingIds = Array.from(new Set([...queueIds, ...wrongIds]));
+      const canLearnRemaining = remainingIds.length > 0 && FS().getDeck(deck.id).words.length >= 4;
+
       root.innerHTML = `
         ${renderHeader()}
         ${renderToolbar()}
@@ -1272,10 +1276,22 @@ window.FlashcardsView = (function () {
           </div>
           <button class="btn fc-btn-known" id="btnKnown">ผ่าน →</button>
         </div>
+        ${canLearnRemaining ? `
+          <div class="btn-row" style="justify-content:center;margin-top:8px;">
+            <button class="btn ghost" id="learnRemaining">🎯 นำคำที่เหลือ (${remainingIds.length}) ไปทำ Learn →</button>
+          </div>
+        ` : ""}
       `;
 
       bindHeader(); bindToolbar();
       setupSwipe(root.querySelector("#card"));
+      const learnRemainingBtn = root.querySelector("#learnRemaining");
+      if (learnRemainingBtn) learnRemainingBtn.addEventListener("click", () => {
+        window.speechSynthesis && window.speechSynthesis.cancel();
+        state.reviewLearn = { wordIds: remainingIds, deckId: deck.id };
+        state.screen = "reviewLearn";
+        refresh(root);
+      });
 
       root.querySelector("#flipBtn").addEventListener("click", (e) => {
         e.stopPropagation();
