@@ -108,6 +108,102 @@ window.FlashcardsView = (function () {
   function renderDailyPanel(homeRoot) {
     const wrap = document.createElement("section");
     wrap.className = "card daily-card";
+    // Local UI state — whether the deck picker is expanded. Survives
+    // re-draws within this panel, resets on navigation away.
+    const ui = { deckPickerOpen: false };
+
+    function renderDeckPicker(decks, selectedSet) {
+      const FD = window.FlashcardsDaily;
+      if (!decks.length) {
+        return `<div class="daily-picker">
+          <p class="subtle" style="margin:0;">ยังไม่มีชุดคำในระบบ</p>
+        </div>`;
+      }
+      // Group decks by folder so longer libraries stay scannable.
+      const folders = (FS().load().folders || []).slice();
+      const folderName = new Map(folders.map((f) => [f.id, f.name]));
+      const groups = new Map();
+      const order = [];
+      for (const d of decks) {
+        const key = d.folderId || "__none__";
+        if (!groups.has(key)) {
+          groups.set(key, []);
+          order.push(key);
+        }
+        groups.get(key).push(d);
+      }
+      const filterActive = selectedSet.size > 0;
+      const groupsHtml = order.map((key) => {
+        const list = groups.get(key);
+        const title = key === "__none__"
+          ? "ไม่มีโฟลเดอร์"
+          : (folderName.get(key) || "โฟลเดอร์");
+        const chipsHtml = list.map((d) => {
+          // When no filter is set, every deck is implicitly included →
+          // show all chips as "on" so it's clear what's being used.
+          const on = filterActive ? selectedSet.has(d.id) : true;
+          const count = (d.words || []).length;
+          return `<button class="fc-chunk-chip ${on ? "is-on" : ""}" data-deck-id="${escapeHtml(d.id)}" aria-pressed="${on}">
+            <span class="fc-chunk-title">${escapeHtml(d.name)}</span>
+            <span class="fc-chunk-range">${count} คำ</span>
+          </button>`;
+        }).join("");
+        return `<div class="daily-picker-group">
+          <div class="daily-picker-group-title subtle">${escapeHtml(title)}</div>
+          <div class="fc-chunk-grid">${chipsHtml}</div>
+        </div>`;
+      }).join("");
+      return `<div class="daily-picker">
+        <p class="subtle" style="margin:0 0 6px;">เลือกชุดคำที่จะดึงคำมาฝึก (เลือกได้หลายชุด) — ระบบจะสุ่มคำประจำวันใหม่อัตโนมัติ</p>
+        ${groupsHtml}
+        <div class="fc-chunk-actions">
+          <button class="btn ghost" id="dailyDeckAll">ใช้ทุกชุดคำ</button>
+          <button class="btn ghost" id="dailyDeckClose" style="margin-left:auto;">ปิด</button>
+        </div>
+      </div>`;
+    }
+
+    function bindDeckPickerEvents(decks, selectedSet) {
+      const FD = window.FlashcardsDaily;
+      const picker = wrap.querySelector(".daily-picker");
+      if (!picker) return;
+      const filterActive = selectedSet.size > 0;
+      picker.querySelectorAll(".fc-chunk-chip[data-deck-id]").forEach((chip) => {
+        chip.addEventListener("click", () => {
+          const id = chip.dataset.deckId;
+          // First click while no filter is active = start from current
+          // "all decks" view, then drop the one the user tapped.
+          const base = filterActive
+            ? new Set(selectedSet)
+            : new Set(decks.map((d) => d.id));
+          if (base.has(id)) {
+            // Refuse to deselect the last remaining deck — an empty
+            // selection would silently reopen the filter to "ทุกชุดคำ"
+            // and confuse the user.
+            if (base.size === 1) return;
+            base.delete(id);
+          } else {
+            base.add(id);
+          }
+          // If user ends up with every deck selected, treat that as
+          // "no filter" (empty array) for a tidier persisted state.
+          const next = base.size === decks.length ? [] : Array.from(base);
+          FD.setDeckIds(next);
+          draw();
+        });
+      });
+      const allBtn = picker.querySelector("#dailyDeckAll");
+      if (allBtn) allBtn.addEventListener("click", () => {
+        FD.setDeckIds([]);
+        draw();
+      });
+      const closeBtn = picker.querySelector("#dailyDeckClose");
+      if (closeBtn) closeBtn.addEventListener("click", () => {
+        ui.deckPickerOpen = false;
+        draw();
+      });
+    }
+
     function draw() {
       const FD = window.FlashcardsDaily;
       if (!FD) { wrap.innerHTML = ""; return; }
@@ -127,22 +223,41 @@ window.FlashcardsView = (function () {
       const learnLabel = learnEnabled
         ? (c.learnDone > 0 ? "ทำ Learn ต่อ" : "เริ่ม Learn")
         : (c.cardsRemaining > 0 ? "Learn (รอ Flash Card เสร็จ)" : "ไม่มีคำที่ต้อง Learn");
+
+      // Deck filter — [] means "ทุกชุดคำ"; an explicit list narrows the pool.
+      const allDecks = (FS().load().decks || []).slice();
+      const selectedDeckIds = new Set(FD.getDeckIds());
+      const filterActive = selectedDeckIds.size > 0;
+      const selectedCount = filterActive
+        ? allDecks.filter((d) => selectedDeckIds.has(d.id)).length
+        : allDecks.length;
+      const filterLabel = filterActive
+        ? `จาก ${selectedCount} ชุดคำที่เลือก`
+        : `จากทุกชุดคำ`;
+      const pickerBtnLabel = filterActive
+        ? `📚 ${selectedCount}/${allDecks.length} ชุด`
+        : `📚 เลือกชุดคำ`;
+
       wrap.innerHTML = `
         <div class="daily-head">
           <div class="daily-title-row">
             <span class="daily-emoji">📅</span>
             <h3 class="daily-title">คำประจำวัน</h3>
-            <span class="daily-target subtle">${total} / ${goal} คำ</span>
+            <span class="daily-target subtle">${total} / ${goal} คำ · ${filterLabel}</span>
           </div>
           <div class="btn-row" style="margin:0;">
+            <button class="btn ghost ${filterActive ? "is-on" : ""}" id="dailyDeckBtn" title="เลือกชุดคำที่ใช้ดึงคำประจำวัน" aria-expanded="${ui.deckPickerOpen ? "true" : "false"}">${pickerBtnLabel}</button>
             <button class="btn ghost" id="dailyRegenBtn" title="สลับชุดคำใหม่สำหรับวันนี้">↻ สุ่มใหม่</button>
             <button class="btn ghost" id="dailyGoalBtn" title="ตั้งจำนวนคำต่อวัน">⚙ ตั้งจำนวน</button>
           </div>
         </div>
+        ${ui.deckPickerOpen ? renderDeckPicker(allDecks, selectedDeckIds) : ""}
         ${noPool ? `
           <p class="subtle daily-empty">
-            ยังไม่มีคำในคลัง — ฝึก Flash Card หรือ Learn สักรอบในชุดคำใดก็ได้ก่อน
-            แล้วระบบจะหยิบคำที่เคย “ยังไม่ได้” มาให้ทบทวนวันละ ${goal} คำ
+            ${filterActive
+              ? `ชุดคำที่เลือกยังไม่มีคำที่เคยฝึก — ลองเปิดชุดคำเพิ่มหรือฝึก Flash Card/Learn ในชุดที่เลือกสักรอบก่อน`
+              : `ยังไม่มีคำในคลัง — ฝึก Flash Card หรือ Learn สักรอบในชุดคำใดก็ได้ก่อน
+            แล้วระบบจะหยิบคำที่เคย “ยังไม่ได้” มาให้ทบทวนวันละ ${goal} คำ`}
           </p>
         ` : `
           <div class="daily-stats">
@@ -189,6 +304,12 @@ window.FlashcardsView = (function () {
         FD.setGoalCount(n);
         draw();
       });
+      const deckBtn = wrap.querySelector("#dailyDeckBtn");
+      if (deckBtn) deckBtn.addEventListener("click", () => {
+        ui.deckPickerOpen = !ui.deckPickerOpen;
+        draw();
+      });
+      bindDeckPickerEvents(allDecks, selectedDeckIds);
       const startCards = wrap.querySelector("#dailyStartCards");
       if (startCards) startCards.addEventListener("click", () => {
         if (startCards.disabled) return;

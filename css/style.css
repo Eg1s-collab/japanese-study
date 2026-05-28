@@ -1768,6 +1768,36 @@ h3 { margin: 0 0 6px; font-size: 16px; }
     justify-content: flex-end;
   }
 }
+.daily-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(167, 139, 250, 0.20);
+}
+.daily-picker-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.daily-picker-group-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.daily-picker .fc-chunk-grid {
+  margin-top: 0;
+  max-height: none;
+}
+.daily-picker .fc-chunk-actions { margin-top: 4px; }
+#dailyDeckBtn.is-on {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
 
 /* ---------- Particle drill (คำช่วยเฉพาะจุด) ---------- */
 .pt-section-title { margin: 0 0 10px 0; font-size: 14px; color: var(--muted); font-weight: 600; }

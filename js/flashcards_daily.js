@@ -22,6 +22,7 @@
  *     goalCount: 100,
  *     date: "YYYY-MM-DD",
  *     items: [{ deckId, wordId, state }],
+ *     deckIds: [deckId, ...],   // [] = ทุกชุดคำ; else เฉพาะ ids ที่ระบุ
  *     updatedAt
  *   }
  */
@@ -42,8 +43,20 @@ window.FlashcardsDaily = (function () {
     if (!Number.isFinite(v)) return DEFAULT_COUNT;
     return Math.min(MAX_COUNT, Math.max(MIN_COUNT, v));
   }
+  function cleanDeckIds(arr) {
+    if (!Array.isArray(arr)) return [];
+    const out = [];
+    const seen = new Set();
+    for (const id of arr) {
+      if (typeof id !== "string" || !id) continue;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push(id);
+    }
+    return out;
+  }
   function emptyState() {
-    return { goalCount: DEFAULT_COUNT, date: "", items: [], updatedAt: 0 };
+    return { goalCount: DEFAULT_COUNT, date: "", items: [], deckIds: [], updatedAt: 0 };
   }
   function load() {
     try {
@@ -53,6 +66,7 @@ window.FlashcardsDaily = (function () {
         goalCount: clampCount(raw.goalCount),
         date: raw.date || "",
         items: Array.isArray(raw.items) ? raw.items : [],
+        deckIds: cleanDeckIds(raw.deckIds),
         updatedAt: raw.updatedAt || 0
       };
     } catch (e) { return emptyState(); }
@@ -90,13 +104,17 @@ window.FlashcardsDaily = (function () {
   // unknown: currently in stillUnknownIds (sticky tag, see storage)
   // passed:  studied at least once (seenIds or completedIds) and NOT
   //          currently in stillUnknownIds.
-  function gatherCandidates() {
+  // If `allowDeckIds` is a non-empty Set, only decks whose id is in it
+  // contribute candidates.
+  function gatherCandidates(allowDeckIds) {
     const FS = window.FlashcardsStorage;
     if (!FS) return { unknown: [], passed: [] };
     const data = FS.load();
+    const filter = (allowDeckIds && allowDeckIds.size) ? allowDeckIds : null;
     const unknown = [];
     const passed = [];
     for (const d of (data.decks || [])) {
+      if (filter && !filter.has(d.id)) continue;
       const seen = new Set(d.progress && d.progress.cards ? d.progress.cards.seenIds : []);
       const done = new Set(d.progress && d.progress.learn ? d.progress.learn.completedIds : []);
       const stillU = new Set(d.progress && d.progress.cards ? (d.progress.cards.stillUnknownIds || []) : []);
@@ -111,8 +129,9 @@ window.FlashcardsDaily = (function () {
     return { unknown, passed };
   }
 
-  function buildPool(goalCount) {
-    const { unknown, passed } = gatherCandidates();
+  function buildPool(goalCount, deckIds) {
+    const allow = new Set(cleanDeckIds(deckIds));
+    const { unknown, passed } = gatherCandidates(allow);
     const target = clampCount(goalCount);
     const targetUnknown = Math.floor(target * UNKNOWN_RATIO);
     const pickedUnknown = shuffle(unknown).slice(0, Math.min(targetUnknown, unknown.length));
@@ -128,13 +147,14 @@ window.FlashcardsDaily = (function () {
     const s = load();
     if (s.date === today && s.items.length && !(opts && opts.force)) return s;
     s.date = today;
-    s.items = buildPool(s.goalCount);
+    s.items = buildPool(s.goalCount, s.deckIds);
     save(s, opts);
     return s;
   }
 
   /* ---------- reads ---------- */
   function getGoalCount() { return clampCount(load().goalCount); }
+  function getDeckIds() { return cleanDeckIds(load().deckIds); }
   function getState(opts) { return ensureToday(opts); }
   function getItems() { return ensureToday().items.slice(); }
   function counts() {
@@ -162,9 +182,19 @@ window.FlashcardsDaily = (function () {
     s.goalCount = clampCount(n);
     // Regenerate today's pool to the new size (best UX = honor latest goal).
     s.date = thailandDate();
-    s.items = buildPool(s.goalCount);
+    s.items = buildPool(s.goalCount, s.deckIds);
     save(s);
     return s.goalCount;
+  }
+  function setDeckIds(ids) {
+    const s = load();
+    s.deckIds = cleanDeckIds(ids);
+    // Selection drives which words can appear — regenerate today's pool
+    // so the user sees the new filter take effect immediately.
+    s.date = thailandDate();
+    s.items = buildPool(s.goalCount, s.deckIds);
+    save(s);
+    return s.deckIds.slice();
   }
   function regenerate() {
     const s = ensureToday({ force: true });
@@ -198,6 +228,7 @@ window.FlashcardsDaily = (function () {
   return {
     DEFAULT_COUNT, MIN_COUNT, MAX_COUNT, UNKNOWN_RATIO,
     getGoalCount, setGoalCount,
+    getDeckIds, setDeckIds,
     getState, getItems, counts,
     regenerate, setItemState,
     subscribe,
