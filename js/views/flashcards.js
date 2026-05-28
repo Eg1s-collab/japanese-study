@@ -965,6 +965,15 @@ window.FlashcardsView = (function () {
       });
       const grid = root.querySelector("#chunkGrid");
       if (grid) {
+        // The grid has its own overflow-y scroll (max-height ~160-200px), so
+        // a full draw() would reset scrollTop and force the user to scroll
+        // back down to keep tapping. Preserve grid scroll across re-renders.
+        const redrawKeepingGridScroll = () => {
+          const savedScroll = grid.scrollTop;
+          draw();
+          const newGrid = root.querySelector("#chunkGrid");
+          if (newGrid) newGrid.scrollTop = savedScroll;
+        };
         grid.querySelectorAll(".fc-chunk-chip").forEach((chip) => {
           chip.addEventListener("click", () => {
             const idx = Number(chip.dataset.chunk);
@@ -976,7 +985,7 @@ window.FlashcardsView = (function () {
               current.add(idx);
             }
             FS().setSelectedChunks(deck.id, Array.from(current));
-            draw();
+            redrawKeepingGridScroll();
           });
         });
         const allBtn = root.querySelector("#chunkAll");
