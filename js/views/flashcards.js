@@ -2028,7 +2028,6 @@ window.FlashcardsView = (function () {
     const totalChunks = chunks.length;
     let currentChunkIdx = 0;
     let queue = chunks.length ? chunks[0].slice() : [];
-    let chunkInterstitial = false;
     let learnDone = 0;
     let answeredThis = false;
     let autoAdvanceTimer = null;
@@ -2143,9 +2142,11 @@ window.FlashcardsView = (function () {
         root.querySelector("#back2").addEventListener("click", goBack);
         return;
       }
-      // Between-chunk interstitial — gives the user a beat to rest before
-      // diving into the next 10.
-      if (chunkInterstitial && currentChunkIdx + 1 < totalChunks) {
+      // Empty queue means the current chunk is done. If there are more
+      // chunks ahead, pause on an interstitial so the user can rest before
+      // the next 10. Only when all chunks are done do we drop back into
+      // the final "return to Flash Card" screen.
+      if (queue.length === 0 && currentChunkIdx + 1 < totalChunks) {
         const nextChunkSize = chunks[currentChunkIdx + 1].length;
         const pct = initialTotal ? Math.round((learnDone / initialTotal) * 100) : 0;
         root.innerHTML = `
@@ -2169,7 +2170,6 @@ window.FlashcardsView = (function () {
         root.querySelector("#nextChunk").addEventListener("click", () => {
           currentChunkIdx++;
           queue = chunks[currentChunkIdx].slice();
-          chunkInterstitial = false;
           lastSpokenWid = null;
           draw();
         });
