@@ -2015,9 +2015,20 @@ window.FlashcardsView = (function () {
     function frontOf(w) { return state.reviewLearnOpts.swap ? w.back : w.front; }
     function backOf(w)  { return state.reviewLearnOpts.swap ? w.front : w.back; }
 
-    // In-memory queue (no persistence to deck's learn round state).
-    let queue = shuffleArr(rl.wordIds.filter((id) => wordById(id) != null));
-    const initialTotal = queue.length;
+    // Break the review pool into chunks of 10. Wrong answers cycle within
+    // the *current* chunk only — the user finishes each chunk's wrong words
+    // before moving on, so mistakes get retried while still fresh.
+    const CHUNK_SIZE = 10;
+    const validIds = shuffleArr(rl.wordIds.filter((id) => wordById(id) != null));
+    const initialTotal = validIds.length;
+    const chunks = [];
+    for (let i = 0; i < validIds.length; i += CHUNK_SIZE) {
+      chunks.push(validIds.slice(i, i + CHUNK_SIZE));
+    }
+    const totalChunks = chunks.length;
+    let currentChunkIdx = 0;
+    let queue = chunks.length ? chunks[0].slice() : [];
+    let chunkInterstitial = false;
     let learnDone = 0;
     let answeredThis = false;
     let autoAdvanceTimer = null;
@@ -2039,12 +2050,15 @@ window.FlashcardsView = (function () {
       speak(text, "ja-JP");
     }
     function renderHeader() {
+      const chunkInfo = totalChunks > 1
+        ? ` · ชุดย่อย ${currentChunkIdx + 1}/${totalChunks} (ชุดละ ${CHUNK_SIZE} คำ)`
+        : "";
       return `
         <div class="qmeta">
           <h2 style="margin:0;">🎯 ทบทวน · Learn ก่อนกลับไป Flash Card</h2>
           <button class="btn ghost" id="back">← กลับ</button>
         </div>
-        <p class="subtle">${escapeHtml(deck.name)} · เฉพาะคำที่ "ยังไม่ได้" (${initialTotal} คำ)</p>
+        <p class="subtle">${escapeHtml(deck.name)} · เฉพาะคำที่ "ยังไม่ได้" (${initialTotal} คำ)${chunkInfo}</p>
       `;
     }
     function renderToolbar() {
@@ -2129,6 +2143,39 @@ window.FlashcardsView = (function () {
         root.querySelector("#back2").addEventListener("click", goBack);
         return;
       }
+      // Between-chunk interstitial — gives the user a beat to rest before
+      // diving into the next 10.
+      if (chunkInterstitial && currentChunkIdx + 1 < totalChunks) {
+        const nextChunkSize = chunks[currentChunkIdx + 1].length;
+        const pct = initialTotal ? Math.round((learnDone / initialTotal) * 100) : 0;
+        root.innerHTML = `
+          ${renderHeader()}
+          ${renderToolbar()}
+          <div class="qprog">เสร็จชุดย่อย ${currentChunkIdx + 1} / ${totalChunks} · รวม ${learnDone} / ${initialTotal}</div>
+          <div class="progress"><div class="bar" style="width:${pct}%"></div></div>
+          <div class="score-card">
+            <div>
+              <h2 style="margin:0;">ผ่านชุดย่อยที่ ${currentChunkIdx + 1} แล้ว!</h2>
+              <p class="subtle">ชุดถัดไป ${nextChunkSize} คำ — พักสักครู่ได้ แล้วค่อยทำต่อ</p>
+            </div>
+            <div class="score-num">✓</div>
+          </div>
+          <div class="btn-row">
+            <button class="btn primary" id="nextChunk">ทำชุดย่อยถัดไป (${nextChunkSize} คำ) →</button>
+            <button class="btn ghost" id="back2">หยุดและกลับ Flash Card</button>
+          </div>
+        `;
+        bindHeader(); bindToolbar();
+        root.querySelector("#nextChunk").addEventListener("click", () => {
+          currentChunkIdx++;
+          queue = chunks[currentChunkIdx].slice();
+          chunkInterstitial = false;
+          lastSpokenWid = null;
+          draw();
+        });
+        root.querySelector("#back2").addEventListener("click", goBack);
+        return;
+      }
       if (queue.length === 0) {
         root.innerHTML = `
           ${renderHeader()}
@@ -2162,13 +2209,20 @@ window.FlashcardsView = (function () {
       const w = wordById(wid);
       if (!w) { queue.shift(); return draw(); }
       const choices = makeChoices(w);
-      const idx = learnDone + 1;
+      const chunkSize = chunks[currentChunkIdx].length;
+      const chunkDone = chunkSize - queue.length;
+      const chunkIdx = chunkDone + 1;
       const pct = initialTotal ? Math.round((learnDone / initialTotal) * 100) : 0;
+      const chunkLabel = totalChunks > 1
+        ? `ชุดย่อย ${currentChunkIdx + 1}/${totalChunks} · ${chunkIdx}/${chunkSize}`
+        : `${learnDone + 1} / ${initialTotal}`;
+      const queueNote = queue.length > 1 ? ` · ในคิวชุดนี้ ${queue.length}` : "";
+      const overallNote = totalChunks > 1 ? ` · รวม ${learnDone}/${initialTotal}` : ` · ผ่านแล้ว ${learnDone}`;
 
       root.innerHTML = `
         ${renderHeader()}
         ${renderToolbar()}
-        <div class="qprog">${idx} / ${initialTotal} · ผ่านแล้ว ${learnDone}${queue.length > 1 && idx <= initialTotal ? ` · ในคิว ${queue.length}` : ""}</div>
+        <div class="qprog">${chunkLabel}${overallNote}${queueNote}</div>
         <div class="progress"><div class="bar" style="width:${pct}%"></div></div>
         <div class="card">
           <div class="fc-learn-prompt">
