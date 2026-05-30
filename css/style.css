@@ -194,17 +194,12 @@ body {
   padding: 16px 24px;
   position: relative;
   z-index: 9;
-  margin: 12px 16px 0;
+  margin: max(12px, env(safe-area-inset-top, 0px)) 16px 0;
   margin-left: max(16px, env(safe-area-inset-left, 0px));
   margin-right: max(16px, env(safe-area-inset-right, 0px));
   border-radius: 20px;
   max-width: 1280px;
   margin-left: auto; margin-right: auto;
-  /* sticky + backdrop-filter is a known scroll-jank source on iOS — keep
-   * the topbar on its own compositor layer so scrolling the page below
-   * doesn't re-rasterize the blurred glass each frame. */
-  transform: translateZ(0);
-  will-change: transform;
 }
 .topbar.glass {
   border: 1px solid var(--glass-border);
@@ -449,6 +444,9 @@ body {
   position: sticky;
   top: max(8px, env(safe-area-inset-top, 0px));
   z-index: 11;
+  /* keep the pinned bar on its own compositor layer so the topbar scrolls
+   * cleanly underneath it (iOS paints composited layers above siblings). */
+  transform: translateZ(0);
 }
 .tabs::-webkit-scrollbar { display: none; }
 /* Fade whichever edge still hides tabs (classes toggled in app.js) so the
