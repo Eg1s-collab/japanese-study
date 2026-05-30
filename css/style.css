@@ -998,7 +998,7 @@ h3 { margin: 0 0 6px; font-size: 16px; }
 @media (max-width: 600px) {
   .topbar {
     padding: 10px 14px;
-    margin: 8px 10px 0;
+    margin: max(8px, env(safe-area-inset-top, 0px)) 10px 0;
     border-radius: 16px;
     gap: 10px;
   }
