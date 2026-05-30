@@ -5,6 +5,8 @@
       "firebase.json",
       ".firebaserc",
       "**/.*",
+      "**/.git/**",
+      "**/.claude/**",
       "**/node_modules/**",
       "มินนะ N4/**",
       "มินนะ N5/**"
