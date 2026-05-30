@@ -52,16 +52,46 @@
     updateTabFades();
   }
 
-  function setTab(name) {
-    state.tab = name;
-    writeSaved(TAB_KEY, name);
-    setActiveTabDom(name);
-    if (name !== "units") state.selectedUnit = null;
-    if (name !== "quiz") state.quizUnit = null;
+  /* ---------- hash routing ----------
+   * The URL hash is the source of truth for navigation, so the browser
+   * Back button moves between tabs / unit drill-downs instead of leaving
+   * the app. Format: "#<tab>" or "#<tab>/<subId>" where subId is a unit id
+   * (units / quiz) or the "__daily__" quiz sentinel. Level stays in
+   * localStorage — it's a filter, not a navigation step.
+   */
+  function hashFor(tab, sub) {
+    return "#" + tab + (sub != null && sub !== "" ? "/" + encodeURIComponent(sub) : "");
+  }
+  // Navigate by setting the hash; this pushes a history entry so Back works.
+  function go(tab, sub) {
+    const h = hashFor(tab, sub);
+    if (location.hash === h) route(); // identical hash won't fire hashchange
+    else location.hash = h;
+  }
+  function route() {
+    const raw = (location.hash || "").replace(/^#/, "");
+    const slash = raw.indexOf("/");
+    let tab = decodeURIComponent(slash === -1 ? raw : raw.slice(0, slash));
+    const sub = slash === -1 ? "" : decodeURIComponent(raw.slice(slash + 1));
+    if (!TAB_NAMES.includes(tab)) tab = readSaved(TAB_KEY, TAB_NAMES, "units");
+    state.tab = tab;
+    writeSaved(TAB_KEY, tab);
+    state.selectedUnit = null;
+    state.quizUnit = null;
+    if (tab === "units" && sub) {
+      const lv = window.LEVELS[state.level];
+      // Guard against a unit id from a different level (e.g. a shared link).
+      state.selectedUnit = lv && lv.units.some((u) => u.id === sub) ? sub : null;
+    } else if (tab === "quiz" && sub) {
+      state.quizUnit = sub; // QuizView validates the unit id / daily sentinel
+    }
+    setActiveTabDom(tab);
     render();
   }
+  function setTab(name) { go(name); }
 
   tabs.forEach((t) => t.addEventListener("click", () => setTab(t.dataset.tab)));
+  window.addEventListener("hashchange", route);
 
   // WAI-ARIA tablist keyboard support: arrows move + activate, Home/End jump.
   if (tabsNav) {
@@ -97,6 +127,10 @@
     writeSaved(LEVEL_KEY, state.level);
     state.selectedUnit = null;
     state.quizUnit = null;
+    // Changing level is a filter, not navigation: drop any unit sub-id from
+    // the URL without pushing a history entry, then repaint.
+    const h = hashFor(state.tab);
+    if (location.hash !== h) history.replaceState(null, "", h);
     render();
   });
 
@@ -106,26 +140,17 @@
 
     if (state.tab === "units") {
       if (!state.selectedUnit) {
-        node = window.UnitsView.renderList(state.level, (id) => {
-          state.selectedUnit = id;
-          render();
-        });
+        node = window.UnitsView.renderList(state.level, (id) => go("units", id));
       } else {
         node = window.UnitsView.renderUnit(
           state.level,
           state.selectedUnit,
-          () => { state.selectedUnit = null; render(); },
-          (unitId) => { state.tab = "quiz"; state.quizUnit = unitId;
-            writeSaved(TAB_KEY, "quiz");
-            setActiveTabDom("quiz");
-            render(); }
+          () => go("units"),
+          (unitId) => go("quiz", unitId)
         );
       }
     } else if (state.tab === "quiz") {
-      node = window.QuizView.render(state.level, state.quizUnit, (unitId) => {
-        state.quizUnit = unitId;
-        render();
-      });
+      node = window.QuizView.render(state.level, state.quizUnit, (unitId) => go("quiz", unitId));
     } else if (state.tab === "particles") {
       node = window.ParticlesView.render();
     } else if (state.tab === "conjugation") {
@@ -144,9 +169,15 @@
     if (node) view.appendChild(node);
   }
 
-  // Reflect the restored tab on the DOM, then paint the matching view.
-  setActiveTabDom(state.tab);
-  render();
+  // Bootstrap: if the URL has no valid tab hash (fresh visit), seed it from
+  // the saved tab without adding a history entry; then route() paints it.
+  (function initRoute() {
+    const tab = decodeURIComponent((location.hash || "").replace(/^#/, "").split("/")[0]);
+    if (!TAB_NAMES.includes(tab)) {
+      history.replaceState(null, "", hashFor(readSaved(TAB_KEY, TAB_NAMES, "units")));
+    }
+    route();
+  })();
 
   // Re-render after a cloud pull/merge so views reflect the merged state
   document.addEventListener("cloud-pulled", render);
