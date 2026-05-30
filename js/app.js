@@ -4,7 +4,10 @@
  */
 (function () {
   const view = document.getElementById("view");
+  const tabsNav = document.querySelector(".tabs");
   const tabs = document.querySelectorAll(".tab");
+  const tabList = Array.from(tabs);
+  const TAB_NAMES = tabList.map((t) => t.dataset.tab);
   const levelSel = document.getElementById("levelSelect");
 
   // Populate level dropdown
@@ -15,16 +18,44 @@
     levelSel.appendChild(opt);
   });
 
+  /* ---------- persist last-used level + tab across reloads ---------- */
+  const LEVEL_KEY = "nihongo.level";
+  const TAB_KEY = "nihongo.tab";
+  function readSaved(key, valid, fallback) {
+    try {
+      const v = localStorage.getItem(key);
+      return valid.includes(v) ? v : fallback;
+    } catch (_) { return fallback; }
+  }
+  function writeSaved(key, value) {
+    try { localStorage.setItem(key, value); } catch (_) {}
+  }
+
   const state = {
-    level: window.LEVEL_ORDER[0],
-    tab: "units",
+    level: readSaved(LEVEL_KEY, window.LEVEL_ORDER, window.LEVEL_ORDER[0]),
+    tab: readSaved(TAB_KEY, TAB_NAMES, "units"),
     selectedUnit: null, // id when reading; null when on list
     quizUnit: null
   };
+  levelSel.value = state.level;
+
+  // Toggle active class, ARIA state, and roving tabindex on the tablist,
+  // then bring the active tab into view (matters on narrow, scrolling navs).
+  function setActiveTabDom(name) {
+    tabs.forEach((t) => {
+      const on = t.dataset.tab === name;
+      t.classList.toggle("active", on);
+      t.setAttribute("aria-selected", on ? "true" : "false");
+      t.tabIndex = on ? 0 : -1;
+      if (on && t.scrollIntoView) t.scrollIntoView({ block: "nearest", inline: "nearest" });
+    });
+    updateTabFades();
+  }
 
   function setTab(name) {
     state.tab = name;
-    tabs.forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
+    writeSaved(TAB_KEY, name);
+    setActiveTabDom(name);
     if (name !== "units") state.selectedUnit = null;
     if (name !== "quiz") state.quizUnit = null;
     render();
@@ -32,8 +63,38 @@
 
   tabs.forEach((t) => t.addEventListener("click", () => setTab(t.dataset.tab)));
 
+  // WAI-ARIA tablist keyboard support: arrows move + activate, Home/End jump.
+  if (tabsNav) {
+    tabsNav.addEventListener("keydown", (e) => {
+      const cur = tabList.indexOf(document.activeElement);
+      if (cur === -1) return;
+      let next = -1;
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") next = (cur + 1) % tabList.length;
+      else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = (cur - 1 + tabList.length) % tabList.length;
+      else if (e.key === "Home") next = 0;
+      else if (e.key === "End") next = tabList.length - 1;
+      else return;
+      e.preventDefault();
+      tabList[next].focus();
+      setTab(tabList[next].dataset.tab);
+    });
+  }
+
+  // Fade the scroll edge that still has hidden tabs, so it reads as scrollable.
+  function updateTabFades() {
+    if (!tabsNav) return;
+    const max = tabsNav.scrollWidth - tabsNav.clientWidth;
+    tabsNav.classList.toggle("fade-left", tabsNav.scrollLeft > 1);
+    tabsNav.classList.toggle("fade-right", tabsNav.scrollLeft < max - 1);
+  }
+  if (tabsNav) {
+    tabsNav.addEventListener("scroll", updateTabFades, { passive: true });
+    window.addEventListener("resize", updateTabFades);
+  }
+
   levelSel.addEventListener("change", () => {
     state.level = levelSel.value;
+    writeSaved(LEVEL_KEY, state.level);
     state.selectedUnit = null;
     state.quizUnit = null;
     render();
@@ -55,7 +116,8 @@
           state.selectedUnit,
           () => { state.selectedUnit = null; render(); },
           (unitId) => { state.tab = "quiz"; state.quizUnit = unitId;
-            tabs.forEach((t) => t.classList.toggle("active", t.dataset.tab === "quiz"));
+            writeSaved(TAB_KEY, "quiz");
+            setActiveTabDom("quiz");
             render(); }
         );
       }
@@ -82,6 +144,8 @@
     if (node) view.appendChild(node);
   }
 
+  // Reflect the restored tab on the DOM, then paint the matching view.
+  setActiveTabDom(state.tab);
   render();
 
   // Re-render after a cloud pull/merge so views reflect the merged state

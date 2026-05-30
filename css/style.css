@@ -450,6 +450,20 @@ body {
   position: relative;
 }
 .tabs::-webkit-scrollbar { display: none; }
+/* Fade whichever edge still hides tabs (classes toggled in app.js) so the
+ * nav reads as horizontally scrollable instead of looking cut off. */
+.tabs.fade-left {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 28px);
+  mask-image: linear-gradient(90deg, transparent, #000 28px);
+}
+.tabs.fade-right {
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+}
+.tabs.fade-left.fade-right {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 28px, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 28px, #000 calc(100% - 28px), transparent);
+}
 .tab {
   border: 0;
   background: transparent;

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#0e0c14" />
   <title>日本語ドリル — ฝึกภาษาญี่ปุ่น</title>
-  <link rel="stylesheet" href="css/style.css?v=20260524a" />
+  <link rel="stylesheet" href="css/style.css?v=20260530a" />
 </head>
 <body>
   <div class="ambient" aria-hidden="true">
@@ -61,36 +61,36 @@
     </div>
   </header>
 
-  <nav class="tabs glass" role="tablist">
-    <button class="tab active" data-tab="units" role="tab">
+  <nav class="tabs glass" role="tablist" aria-label="เมนูหลัก">
+    <button class="tab active" data-tab="units" role="tab" aria-selected="true" tabindex="0">
       <span class="tab-jp">本</span>
       <span class="tab-label">บทเรียน</span>
     </button>
-    <button class="tab" data-tab="quiz" role="tab">
+    <button class="tab" data-tab="quiz" role="tab" aria-selected="false" tabindex="-1">
       <span class="tab-jp">問</span>
       <span class="tab-label">แบบฝึกหัด</span>
     </button>
-    <button class="tab" data-tab="particles" role="tab">
+    <button class="tab" data-tab="particles" role="tab" aria-selected="false" tabindex="-1">
       <span class="tab-jp">助</span>
       <span class="tab-label">คำช่วย</span>
     </button>
-    <button class="tab" data-tab="conjugation" role="tab">
+    <button class="tab" data-tab="conjugation" role="tab" aria-selected="false" tabindex="-1">
       <span class="tab-jp">活</span>
       <span class="tab-label">ผันคำ</span>
     </button>
-    <button class="tab" data-tab="flashcards" role="tab">
+    <button class="tab" data-tab="flashcards" role="tab" aria-selected="false" tabindex="-1">
       <span class="tab-jp">札</span>
       <span class="tab-label">บัตรคำ</span>
     </button>
-    <button class="tab" data-tab="dictation" role="tab">
+    <button class="tab" data-tab="dictation" role="tab" aria-selected="false" tabindex="-1">
       <span class="tab-jp">聞</span>
       <span class="tab-label">ฟังเขียน</span>
     </button>
-    <button class="tab" data-tab="arrange" role="tab">
+    <button class="tab" data-tab="arrange" role="tab" aria-selected="false" tabindex="-1">
       <span class="tab-jp">並</span>
       <span class="tab-label">เรียงประโยค</span>
     </button>
-    <button class="tab" data-tab="bookmarks" role="tab">
+    <button class="tab" data-tab="bookmarks" role="tab" aria-selected="false" tabindex="-1">
       <span class="tab-jp">星</span>
       <span class="tab-label">ทวนซ้ำ</span>
     </button>
@@ -129,7 +129,7 @@
   <script src="js/views/dictation.js?v=20260523c"></script>
   <script src="js/views/arrange.js?v=20260523b"></script>
   <script src="js/views/bookmarks.js?v=20260516j"></script>
-  <script src="js/app.js?v=20260516r"></script>
+  <script src="js/app.js?v=20260530a"></script>
   <script type="module" src="js/cloud_sync.js?v=20260516j"></script>
 </body>
 </html>
