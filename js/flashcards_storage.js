@@ -25,10 +25,14 @@ window.FlashcardsStorage = (function () {
   const KEY = "jp_flashcards_v1";
 
   function emptyState() {
-    return { folders: [], decks: [], updatedAt: 0 };
+    return { folders: [], decks: [], deletedDecks: {}, deletedFolders: {}, updatedAt: 0 };
   }
 
   function ensureDeckShape(d) {
+    // Per-deck last-write-wins timestamp. Legacy decks (created before this
+    // existed) fall back to createdAt so they have a stable baseline; any
+    // future edit bumps it via commitDeck().
+    if (typeof d.updatedAt !== "number") d.updatedAt = d.createdAt || 0;
     if (typeof d.chunkSize === "undefined") d.chunkSize = null;
     if (typeof d.selectedChunk !== "number" || d.selectedChunk < 0) d.selectedChunk = 0;
     // Multi-chunk selection (review can span several sub-sets at once).
@@ -67,10 +71,15 @@ window.FlashcardsStorage = (function () {
       if (!raw || typeof raw !== "object") return emptyState();
       raw.folders = Array.isArray(raw.folders) ? raw.folders : [];
       raw.decks = Array.isArray(raw.decks) ? raw.decks : [];
+      raw.folders.forEach((f) => {
+        if (typeof f.updatedAt !== "number") f.updatedAt = f.createdAt || 0;
+      });
       raw.decks.forEach((d) => {
         d.words = Array.isArray(d.words) ? d.words : [];
         ensureDeckShape(d);
       });
+      raw.deletedDecks = (raw.deletedDecks && typeof raw.deletedDecks === "object") ? raw.deletedDecks : {};
+      raw.deletedFolders = (raw.deletedFolders && typeof raw.deletedFolders === "object") ? raw.deletedFolders : {};
       raw.updatedAt = raw.updatedAt || 0;
       return raw;
     } catch (e) {
@@ -86,6 +95,14 @@ window.FlashcardsStorage = (function () {
     }
   }
 
+  // Save after a deck mutation, stamping the deck's own updatedAt so cross-
+  // device merges resolve per-deck (a reset or edit on the most-recently-used
+  // device wins, instead of one stale doc clobbering everything).
+  function commitDeck(state, d) {
+    if (d) d.updatedAt = Date.now();
+    save(state);
+  }
+
   function uid(prefix) {
     return prefix + "_" + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
   }
@@ -93,7 +110,8 @@ window.FlashcardsStorage = (function () {
   /* ---------- folders ---------- */
   function createFolder(name) {
     const state = load();
-    const f = { id: uid("f"), name: String(name || "").trim() || "โฟลเดอร์", createdAt: Date.now() };
+    const now = Date.now();
+    const f = { id: uid("f"), name: String(name || "").trim() || "โฟลเดอร์", createdAt: now, updatedAt: now };
     state.folders.push(f);
     save(state);
     return f;
@@ -101,23 +119,30 @@ window.FlashcardsStorage = (function () {
   function renameFolder(id, name) {
     const state = load();
     const f = state.folders.find((x) => x.id === id);
-    if (f) { f.name = String(name || "").trim() || f.name; save(state); }
+    if (f) { f.name = String(name || "").trim() || f.name; f.updatedAt = Date.now(); save(state); }
   }
   function deleteFolder(id, moveDecksTo) {
     const state = load();
+    const existed = state.folders.some((f) => f.id === id);
     state.folders = state.folders.filter((f) => f.id !== id);
-    state.decks.forEach((d) => { if (d.folderId === id) d.folderId = moveDecksTo || null; });
+    const now = Date.now();
+    state.decks.forEach((d) => {
+      if (d.folderId === id) { d.folderId = moveDecksTo || null; d.updatedAt = now; }
+    });
+    if (existed) state.deletedFolders[id] = now;
     save(state);
   }
 
   /* ---------- decks ---------- */
   function createDeck(name, folderId) {
     const state = load();
+    const now = Date.now();
     const d = ensureDeckShape({
       id: uid("d"),
       name: String(name || "").trim() || "ชุดคำใหม่",
       folderId: folderId || null,
-      createdAt: Date.now(),
+      createdAt: now,
+      updatedAt: now,
       words: []
     });
     state.decks.push(d);
@@ -127,16 +152,18 @@ window.FlashcardsStorage = (function () {
   function renameDeck(id, name) {
     const state = load();
     const d = state.decks.find((x) => x.id === id);
-    if (d) { d.name = String(name || "").trim() || d.name; save(state); }
+    if (d) { d.name = String(name || "").trim() || d.name; commitDeck(state, d); }
   }
   function moveDeck(id, folderId) {
     const state = load();
     const d = state.decks.find((x) => x.id === id);
-    if (d) { d.folderId = folderId || null; save(state); }
+    if (d) { d.folderId = folderId || null; commitDeck(state, d); }
   }
   function deleteDeck(id) {
     const state = load();
+    const before = state.decks.length;
     state.decks = state.decks.filter((d) => d.id !== id);
+    if (state.decks.length !== before) state.deletedDecks[id] = Date.now();
     save(state);
   }
 
@@ -154,7 +181,7 @@ window.FlashcardsStorage = (function () {
     };
     if (!w.front && !w.back) return null;
     d.words.push(w);
-    save(state);
+    commitDeck(state, d);
     return w;
   }
   function updateWord(deckId, wordId, front, back) {
@@ -165,14 +192,14 @@ window.FlashcardsStorage = (function () {
     if (!w) return;
     w.front = String(front || "").trim();
     w.back = String(back || "").trim();
-    save(state);
+    commitDeck(state, d);
   }
   function deleteWord(deckId, wordId) {
     const state = load();
     const d = state.decks.find((x) => x.id === deckId);
     if (!d) return;
     d.words = d.words.filter((w) => w.id !== wordId);
-    save(state);
+    commitDeck(state, d);
   }
   function toggleStar(deckId, wordId) {
     const state = load();
@@ -181,7 +208,7 @@ window.FlashcardsStorage = (function () {
     const w = d.words.find((x) => x.id === wordId);
     if (!w) return false;
     w.starred = !w.starred;
-    save(state);
+    commitDeck(state, d);
     return w.starred;
   }
 
@@ -245,7 +272,7 @@ window.FlashcardsStorage = (function () {
       });
       added++;
     }
-    save(state);
+    commitDeck(state, d);
     return { added };
   }
 
@@ -268,7 +295,7 @@ window.FlashcardsStorage = (function () {
     d.selectedChunk = 0;
     d.selectedChunks = [0];
     clearRounds(d);
-    save(state);
+    commitDeck(state, d);
   }
   function setSelectedChunk(deckId, idx) {
     const state = load();
@@ -277,7 +304,7 @@ window.FlashcardsStorage = (function () {
     d.selectedChunk = Math.max(0, Math.floor(Number(idx) || 0));
     d.selectedChunks = [d.selectedChunk];
     clearRounds(d);
-    save(state);
+    commitDeck(state, d);
   }
   function setSelectedChunks(deckId, indices) {
     const state = load();
@@ -292,7 +319,7 @@ window.FlashcardsStorage = (function () {
     d.selectedChunks = clean.length ? clean : [0];
     d.selectedChunk = d.selectedChunks[0];
     clearRounds(d);
-    save(state);
+    commitDeck(state, d);
   }
   function chunkCount(deck) {
     if (!deck.chunkSize || !deck.words.length) return 1;
@@ -348,7 +375,7 @@ window.FlashcardsStorage = (function () {
     d.progress.cards.stillUnknownIds = d.progress.cards.stillUnknownIds.filter((id) => id !== wordId);
     if (d.progress.cards.stillUnknownIds.length !== before) changed = true;
     if (changed) {
-      save(state);
+      commitDeck(state, d);
       if (window.FlashcardsStreak) window.FlashcardsStreak.addCards(1);
     }
   }
@@ -359,7 +386,7 @@ window.FlashcardsStorage = (function () {
     ensureDeckShape(d);
     if (!d.progress.cards.stillUnknownIds.includes(wordId)) {
       d.progress.cards.stillUnknownIds.push(wordId);
-      save(state);
+      commitDeck(state, d);
     }
   }
   function unmarkCardSeen(deckId, wordId) {
@@ -369,7 +396,7 @@ window.FlashcardsStorage = (function () {
     ensureDeckShape(d);
     const before = d.progress.cards.seenIds.length;
     d.progress.cards.seenIds = d.progress.cards.seenIds.filter((id) => id !== wordId);
-    if (d.progress.cards.seenIds.length !== before) save(state);
+    if (d.progress.cards.seenIds.length !== before) commitDeck(state, d);
   }
   function recordLearnAttempt(deckId, wordId, isCorrect, opts) {
     const state = load();
@@ -386,7 +413,7 @@ window.FlashcardsStorage = (function () {
         newlyCompleted = 1;
       }
     }
-    save(state);
+    commitDeck(state, d);
     if (newlyCompleted && window.FlashcardsStreak) window.FlashcardsStreak.addCards(newlyCompleted);
   }
   function markLearnCompleted(deckId, wordIds) {
@@ -403,7 +430,7 @@ window.FlashcardsStorage = (function () {
       }
     }
     if (added) {
-      save(state);
+      commitDeck(state, d);
       if (window.FlashcardsStreak) window.FlashcardsStreak.addCards(added);
     }
   }
@@ -418,7 +445,7 @@ window.FlashcardsStorage = (function () {
     if (mode === "learn" || mode === "all") {
       d.progress.learn = { completedIds: [], queueIds: [], wrongIds: [], roundTotal: 0, attempts: 0, correct: 0 };
     }
-    save(state);
+    commitDeck(state, d);
   }
   // Reset progress only for the supplied wordIds (e.g. the currently
   // selected sub-chunk). Aggregate counters (attempts/correct) are left
@@ -447,7 +474,7 @@ window.FlashcardsStorage = (function () {
         d.progress.learn.roundTotal = 0;
       }
     }
-    save(state);
+    commitDeck(state, d);
   }
   function setCardsRound(deckId, partial) {
     const state = load();
@@ -457,7 +484,7 @@ window.FlashcardsStorage = (function () {
     if ("queueIds" in partial) d.progress.cards.queueIds = partial.queueIds.slice();
     if ("wrongIds" in partial) d.progress.cards.wrongIds = partial.wrongIds.slice();
     if ("roundTotal" in partial) d.progress.cards.roundTotal = partial.roundTotal;
-    save(state);
+    commitDeck(state, d);
   }
   function setLearnRound(deckId, partial) {
     const state = load();
@@ -467,7 +494,7 @@ window.FlashcardsStorage = (function () {
     if ("queueIds" in partial) d.progress.learn.queueIds = partial.queueIds.slice();
     if ("wrongIds" in partial) d.progress.learn.wrongIds = partial.wrongIds.slice();
     if ("roundTotal" in partial) d.progress.learn.roundTotal = partial.roundTotal;
-    save(state);
+    commitDeck(state, d);
   }
 
   /* ---------- queries ---------- */
@@ -482,11 +509,92 @@ window.FlashcardsStorage = (function () {
     if (!state || typeof state !== "object") return;
     localStorage.setItem(KEY, JSON.stringify(state));
   }
-  // Whole-doc last-write-wins by top-level updatedAt
+  /* ---------- cloud merge ----------
+   * Conflict-free per-record merge, so a stale or cold-start write can never
+   * clobber the real copy on the sign-in pull:
+   *   • decks / folders: union by id; for an id on both sides the one with the
+   *     newer per-record `updatedAt` wins (so a reset or edit on the
+   *     most-recently-used device propagates).
+   *   • deletions: tracked as tombstones ({ id: deletedAt }). A record is
+   *     dropped when a tombstone's deletedAt is >= the record's updatedAt, so a
+   *     delete on one device propagates — yet an edit made AFTER the delete
+   *     (updatedAt > deletedAt) wins, i.e. "edit beats delete".
+   * Tombstones older than 180 days are pruned to bound document growth.
+   */
+  const TOMBSTONE_TTL = 180 * 24 * 60 * 60 * 1000;
+
+  function mergeTombstones(a, b) {
+    const out = {};
+    [a, b].forEach((m) => {
+      if (m && typeof m === "object") {
+        for (const id in m) {
+          const t = Number(m[id]) || 0;
+          if (t > (out[id] || 0)) out[id] = t;
+        }
+      }
+    });
+    return out;
+  }
+  function pruneTombstones(map) {
+    const cutoff = Date.now() - TOMBSTONE_TTL;
+    const out = {};
+    for (const id in map) { if ((map[id] || 0) >= cutoff) out[id] = map[id]; }
+    return out;
+  }
+  // A record survives unless a tombstone for it is at least as new as its
+  // own last edit.
+  function alive(rec, tombstones) {
+    const t = tombstones[rec.id];
+    return typeof t !== "number" || t < (rec.updatedAt || 0);
+  }
+  function normalizeForMerge(s) {
+    const st = (s && typeof s === "object") ? s : emptyState();
+    const folders = (Array.isArray(st.folders) ? st.folders : []).map((f) => {
+      if (typeof f.updatedAt !== "number") f.updatedAt = f.createdAt || 0;
+      return f;
+    });
+    const decks = (Array.isArray(st.decks) ? st.decks : []).map((d) => {
+      d.words = Array.isArray(d.words) ? d.words : [];
+      return ensureDeckShape(d);
+    });
+    return {
+      folders, decks,
+      deletedDecks: (st.deletedDecks && typeof st.deletedDecks === "object") ? st.deletedDecks : {},
+      deletedFolders: (st.deletedFolders && typeof st.deletedFolders === "object") ? st.deletedFolders : {},
+      updatedAt: st.updatedAt || 0
+    };
+  }
+  // Per-id last-write-wins on `updatedAt`.
+  function pickNewer(x, y) {
+    return (x.updatedAt || 0) >= (y.updatedAt || 0) ? x : y;
+  }
   function mergeForCloud(localState, cloudState) {
-    const a = localState || emptyState();
-    const b = cloudState || emptyState();
-    return (b.updatedAt || 0) > (a.updatedAt || 0) ? b : a;
+    const a = normalizeForMerge(localState);
+    const b = normalizeForMerge(cloudState);
+
+    const delDecks = mergeTombstones(a.deletedDecks, b.deletedDecks);
+    const delFolders = mergeTombstones(a.deletedFolders, b.deletedFolders);
+
+    const folderMap = new Map();
+    [...a.folders, ...b.folders].forEach((f) => {
+      if (!f || !f.id) return;
+      const prev = folderMap.get(f.id);
+      folderMap.set(f.id, prev ? pickNewer(f, prev) : f);
+    });
+    const deckMap = new Map();
+    [...a.decks, ...b.decks].forEach((d) => {
+      if (!d || !d.id) return;
+      const prev = deckMap.get(d.id);
+      deckMap.set(d.id, prev ? pickNewer(d, prev) : d);
+    });
+
+    return {
+      folders: [...folderMap.values()].filter((f) => alive(f, delFolders)),
+      decks: [...deckMap.values()].filter((d) => alive(d, delDecks)),
+      deletedDecks: pruneTombstones(delDecks),
+      deletedFolders: pruneTombstones(delFolders),
+      updatedAt: Math.max(a.updatedAt || 0, b.updatedAt || 0)
+    };
   }
 
   return {

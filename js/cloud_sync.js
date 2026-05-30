@@ -53,6 +53,7 @@ const FD_KEY = "jp_flashcards_daily_v1";
 let currentUser = null;
 let pushTimer = null;
 let initialPullDone = false;
+let authReady = false;
 
 /* ---------- DOM elements (created once, then reused) ---------- */
 function el(id) { return document.getElementById(id); }
@@ -273,6 +274,7 @@ window.CloudSync = {
   signOut: () => signOut(auth),
   notifyChange: () => schedulePush(),
   isSignedIn: () => !!currentUser,
+  isAuthReady: () => authReady,
   getUser: () => currentUser
 };
 
@@ -288,6 +290,13 @@ onAuthStateChanged(auth, async (u) => {
   currentUser = u;
   initialPullDone = false;
   updateAuthUI();
+  // Signal "auth state is now known" exactly once, so consumers (e.g. the
+  // starter-deck seed) never act while sign-in is still resolving.
+  const firstResolve = !authReady;
+  authReady = true;
+  if (firstResolve) {
+    document.dispatchEvent(new CustomEvent("auth-ready", { detail: { signedIn: !!u } }));
+  }
   if (u) {
     await pullAndMerge();
   }

@@ -219,10 +219,25 @@
     if (added > 0 && state.tab === "flashcards") render();
   }
   document.addEventListener("cloud-pulled", () => { runSeed(); }, { once: true });
-  setTimeout(() => {
+  // Signed-out users seed once we definitively KNOW there's no account to pull
+  // from. Never seed while auth is still resolving: a premature seed bumps the
+  // local `updatedAt`, and the subsequent sign-in pull would then let those
+  // empty starter decks clobber the real cloud progress (whole-doc LWW).
+  function seedIfSignedOut() {
     if (window.CloudSync && window.CloudSync.isSignedIn && window.CloudSync.isSignedIn()) return;
     runSeed();
-  }, 2500);
+  }
+  if (window.CloudSync && window.CloudSync.isAuthReady && window.CloudSync.isAuthReady()) {
+    seedIfSignedOut();
+  } else {
+    document.addEventListener("auth-ready", seedIfSignedOut, { once: true });
+    // Safety net: if cloud sync never initialises (module/network failure),
+    // still seed so first-time offline users get the starter decks.
+    setTimeout(() => {
+      const ready = window.CloudSync && window.CloudSync.isAuthReady && window.CloudSync.isAuthReady();
+      if (!ready) runSeed();
+    }, 8000);
+  }
 
   /* ---------- one-shot cleanup of stray Japanese in Thai back fields ----------
    * Earlier seed imports may have stored back text like "霜, น้ำค้างแข็ง" with
