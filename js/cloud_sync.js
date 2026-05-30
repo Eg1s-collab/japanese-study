@@ -21,7 +21,8 @@
  */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
 import {
-  getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
+  getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect,
+  getRedirectResult, signOut, onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, setDoc, serverTimestamp
@@ -241,9 +242,35 @@ function schedulePush() {
   pushTimer = setTimeout(pushNow, 1500);
 }
 
+/* ---------- sign-in ----------
+ * Installed PWAs — especially on iOS — run with no popup context, so
+ * signInWithPopup silently fails there. Use redirect-based auth when the app
+ * is launched standalone (added to home screen), and fall back to redirect if
+ * a popup is blocked or unsupported in a normal tab.
+ */
+function isStandalone() {
+  return (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches)
+    || window.navigator.standalone === true;
+}
+async function doSignIn() {
+  const provider = new GoogleAuthProvider();
+  if (isStandalone()) return signInWithRedirect(auth, provider);
+  try {
+    return await signInWithPopup(auth, provider);
+  } catch (e) {
+    const code = e && e.code;
+    if (code === "auth/popup-blocked"
+      || code === "auth/cancelled-popup-request"
+      || code === "auth/operation-not-supported-in-this-environment") {
+      return signInWithRedirect(auth, provider);
+    }
+    throw e;
+  }
+}
+
 /* ---------- public API ---------- */
 window.CloudSync = {
-  signIn: () => signInWithPopup(auth, new GoogleAuthProvider()).catch((e) => {
+  signIn: () => doSignIn().catch((e) => {
     console.error("[cloud] signIn", e);
     setStatus("เข้าสู่ระบบไม่สำเร็จ", true);
   }),
@@ -254,6 +281,13 @@ window.CloudSync = {
 };
 
 /* ---------- bootstrap ---------- */
+// Complete any redirect-based sign-in and surface its errors (the actual
+// session is picked up by onAuthStateChanged below).
+getRedirectResult(auth).catch((e) => {
+  console.error("[cloud] redirect", e);
+  setStatus("เข้าสู่ระบบไม่สำเร็จ", true);
+});
+
 onAuthStateChanged(auth, async (u) => {
   currentUser = u;
   initialPullDone = false;
