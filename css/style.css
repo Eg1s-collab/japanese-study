@@ -204,6 +204,15 @@ body {
 .topbar.glass {
   border: 1px solid var(--glass-border);
 }
+/* While the theme popover is open, raise the topbar above the sticky tabs bar
+ * (z-index 11). Three things are needed:
+ *   • contain: none — the base .topbar uses `contain: paint`, which clips the
+ *     popover to the topbar's box; lift it so the popover can hang below.
+ *   • z-index: 30 — outrank .tabs (the popover is nested in the topbar's
+ *     stacking context, so the topbar itself must win).
+ *   • transform — promote the topbar to its own compositor layer so it paints
+ *     over .tabs' composited (translateZ) layer instead of losing to it. */
+.topbar.theme-open { contain: none; z-index: 30; transform: translateZ(0); }
 .topbar::after {
   content: "";
   position: absolute;

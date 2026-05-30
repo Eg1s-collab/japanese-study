@@ -243,18 +243,14 @@ function schedulePush() {
 }
 
 /* ---------- sign-in ----------
- * Installed PWAs — especially on iOS — run with no popup context, so
- * signInWithPopup silently fails there. Use redirect-based auth when the app
- * is launched standalone (added to home screen), and fall back to redirect if
- * a popup is blocked or unsupported in a normal tab.
+ * Try popup first everywhere — modern iOS (16.4+) handles signInWithPopup in
+ * installed PWAs, and redirect-based auth often fails to complete in an iOS
+ * standalone PWA (the redirect returns to Safari, not the home-screen app, so
+ * getRedirectResult never sees the session). Fall back to redirect only when a
+ * popup is genuinely blocked or unsupported.
  */
-function isStandalone() {
-  return (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches)
-    || window.navigator.standalone === true;
-}
 async function doSignIn() {
   const provider = new GoogleAuthProvider();
-  if (isStandalone()) return signInWithRedirect(auth, provider);
   try {
     return await signInWithPopup(auth, provider);
   } catch (e) {

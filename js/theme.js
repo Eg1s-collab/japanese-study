@@ -131,12 +131,17 @@
     const btn = document.getElementById("themeBtn");
     const pop = document.getElementById("themePopover");
     if (!btn || !pop) return;
+    const topbar = btn.closest(".topbar");
 
     apply(load());
 
     function setOpen(open) {
       pop.hidden = !open;
       btn.setAttribute("aria-expanded", open ? "true" : "false");
+      // Lift the whole topbar above the sticky tabs bar while the popover is
+      // open — the popover sits inside the topbar's stacking context, so the
+      // topbar itself must outrank .tabs for the swatches to be tappable.
+      if (topbar) topbar.classList.toggle("theme-open", open);
     }
 
     btn.addEventListener("click", (e) => {
