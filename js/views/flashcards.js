@@ -2143,37 +2143,15 @@ window.FlashcardsView = (function () {
         return;
       }
       // Empty queue means the current chunk is done. If there are more
-      // chunks ahead, pause on an interstitial so the user can rest before
-      // the next 10. Only when all chunks are done do we drop back into
+      // chunks ahead, roll straight into the next 10 with no interstitial —
+      // the user wants the whole review to run continuously before going
+      // back to Flash Card. Only when all chunks are done do we drop into
       // the final "return to Flash Card" screen.
       if (queue.length === 0 && currentChunkIdx + 1 < totalChunks) {
-        const nextChunkSize = chunks[currentChunkIdx + 1].length;
-        const pct = initialTotal ? Math.round((learnDone / initialTotal) * 100) : 0;
-        root.innerHTML = `
-          ${renderHeader()}
-          ${renderToolbar()}
-          <div class="qprog">เสร็จชุดย่อย ${currentChunkIdx + 1} / ${totalChunks} · รวม ${learnDone} / ${initialTotal}</div>
-          <div class="progress"><div class="bar" style="width:${pct}%"></div></div>
-          <div class="score-card">
-            <div>
-              <h2 style="margin:0;">ผ่านชุดย่อยที่ ${currentChunkIdx + 1} แล้ว!</h2>
-              <p class="subtle">ชุดถัดไป ${nextChunkSize} คำ — พักสักครู่ได้ แล้วค่อยทำต่อ</p>
-            </div>
-            <div class="score-num">✓</div>
-          </div>
-          <div class="btn-row">
-            <button class="btn primary" id="nextChunk">ทำชุดย่อยถัดไป (${nextChunkSize} คำ) →</button>
-            <button class="btn ghost" id="back2">หยุดและกลับ Flash Card</button>
-          </div>
-        `;
-        bindHeader(); bindToolbar();
-        root.querySelector("#nextChunk").addEventListener("click", () => {
-          currentChunkIdx++;
-          queue = chunks[currentChunkIdx].slice();
-          lastSpokenWid = null;
-          draw();
-        });
-        root.querySelector("#back2").addEventListener("click", goBack);
+        currentChunkIdx++;
+        queue = chunks[currentChunkIdx].slice();
+        lastSpokenWid = null;
+        draw();
         return;
       }
       if (queue.length === 0) {
