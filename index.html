@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="日本語" />
-  <link rel="stylesheet" href="css/style.css?v=20260530f" />
+  <link rel="stylesheet" href="css/style.css?v=20260603c" />
 </head>
 <body>
   <div class="ambient" aria-hidden="true">
@@ -72,6 +72,10 @@
       <span class="tab-jp">本</span>
       <span class="tab-label">บทเรียน</span>
     </button>
+    <button class="tab" data-tab="grammar" role="tab" aria-selected="false" tabindex="-1">
+      <span class="tab-jp">要</span>
+      <span class="tab-label">สรุปไวยากรณ์</span>
+    </button>
     <button class="tab" data-tab="quiz" role="tab" aria-selected="false" tabindex="-1">
       <span class="tab-jp">問</span>
       <span class="tab-label">แบบฝึกหัด</span>
@@ -118,6 +122,7 @@
   <script src="js/data/n3/videos.js?v=20260516j"></script>
   <script src="js/data/particles.js?v=20260522g"></script>
   <script src="js/data/sentences.js?v=20260523c"></script>
+  <script src="js/data/grammar-map.js?v=20260603c"></script>
   <script src="js/data/index.js?v=20260516j"></script>
   <script src="js/storage.js?v=20260516j"></script>
   <script src="js/conj_storage.js?v=20260516j"></script>
@@ -128,6 +133,7 @@
   <script src="js/daily_storage.js?v=20260516p"></script>
   <script src="js/kana_keypad.js?v=20260516j"></script>
   <script src="js/views/units.js?v=20260516j"></script>
+  <script src="js/views/grammar-summary.js?v=20260603c"></script>
   <script src="js/views/quiz.js?v=20260516p"></script>
   <script src="js/views/particles.js?v=20260522g"></script>
   <script src="js/views/conjugation.js?v=20260516n"></script>
@@ -135,12 +141,12 @@
   <script src="js/views/dictation.js?v=20260523c"></script>
   <script src="js/views/arrange.js?v=20260523b"></script>
   <script src="js/views/bookmarks.js?v=20260516j"></script>
-  <script src="js/app.js?v=20260530g"></script>
+  <script src="js/app.js?v=20260603b"></script>
   <script type="module" src="js/cloud_sync.js?v=20260530g"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("sw.js?v=20260530g").catch((e) => {
+        navigator.serviceWorker.register("sw.js?v=20260603c").catch((e) => {
           console.warn("[sw] registration failed", e);
         });
       });

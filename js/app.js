@@ -149,6 +149,8 @@
           (unitId) => go("quiz", unitId)
         );
       }
+    } else if (state.tab === "grammar") {
+      node = window.GrammarSummaryView.render(state.level, (unitId) => go("units", unitId));
     } else if (state.tab === "quiz") {
       node = window.QuizView.render(state.level, state.quizUnit, (unitId) => go("quiz", unitId));
     } else if (state.tab === "particles") {

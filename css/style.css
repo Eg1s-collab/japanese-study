@@ -2005,7 +2005,143 @@ h3 { margin: 0 0 6px; font-size: 16px; }
 }
 .pt-use-th { color: var(--muted); font-size: 13px; }
 
+/* ---------- Grammar summary (สรุปไวยากรณ์) ---------- */
+.gs-toolbar {
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  margin: 4px 0 16px;
+}
+.gs-search { flex: 1; min-width: 200px; }
+.gs-tool-btns { display: flex; gap: 8px; }
+.gs-sections { display: grid; gap: 22px; }
+.gs-unit-head {
+  display: flex; align-items: center; gap: 12px;
+  margin: 0 0 10px;
+}
+.gs-unit-title {
+  margin: 0; font-size: 15px; color: var(--ink); flex: 1; min-width: 0;
+  line-height: 1.4;
+}
+.gs-point > summary { padding: 11px 14px; }
+.gs-point-pat {
+  font-weight: 700; font-size: 15px; color: var(--ink);
+  flex: 1; min-width: 0; line-height: 1.45;
+}
+.gs-point[open] .gs-point-pat { color: var(--accent-strong); }
+.gs-point-body { padding: 0 14px 12px; }
+.gs-point-body .desc {
+  color: #c8bdd1; font-size: 14px; line-height: 1.6; margin-bottom: 8px;
+}
+.gs-noresult { margin-top: 16px; }
+
+/* mode toggle (ตาม Unit / ตามหมวดหมู่) */
+.gs-modes {
+  display: inline-flex; gap: 4px; padding: 4px;
+  background: rgba(0,0,0,.22); border: 1px solid var(--line);
+  border-radius: 999px; margin: 0 0 16px;
+}
+.gs-mode {
+  border: 0; background: transparent; cursor: pointer;
+  color: var(--muted); font-size: 13px; font-weight: 600;
+  padding: 6px 16px; border-radius: 999px;
+  transition: background .12s ease, color .12s ease;
+}
+.gs-mode:hover { color: var(--ink); }
+.gs-mode.on { background: var(--accent-soft); color: var(--accent-strong); }
+
+/* category section header */
+.gs-cat-head { display: flex; gap: 12px; align-items: flex-start; margin: 0 0 10px; }
+.gs-cat-ico {
+  flex: none; width: 38px; height: 38px; border-radius: 10px;
+  display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent-strong);
+  font-size: 20px; font-weight: 700;
+}
+.gs-cat-titles { min-width: 0; }
+.gs-cat-title { margin: 0; font-size: 16px; color: var(--ink); }
+.gs-cat-desc { margin: 2px 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+
+/* unit tag chip on summary (category mode) */
+.gs-point > summary { display: flex; align-items: center; gap: 10px; }
+.gs-unit-tag {
+  flex: none; font-size: 11px; font-weight: 600;
+  color: var(--muted); background: rgba(0,0,0,.25);
+  border: 1px solid var(--line); padding: 2px 8px; border-radius: 999px;
+}
+
+/* connections footer */
+.gs-conn {
+  margin-top: 10px; padding-top: 10px;
+  border-top: 1px dashed var(--line);
+  display: grid; gap: 8px;
+}
+.gs-conn-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.gs-conn-cat {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  color: var(--accent-strong); background: var(--accent-softer);
+  border: 1px solid var(--accent-border); padding: 4px 11px; border-radius: 999px;
+}
+.gs-conn-cat:hover { background: var(--accent-soft); }
+.gs-conn-form {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  color: var(--ink); background: rgba(0,0,0,.22);
+  border: 1px solid var(--line); padding: 4px 11px; border-radius: 999px;
+}
+.gs-conn-form:hover { border-color: var(--accent-border); color: var(--accent-strong); }
+.gs-conn-ico { font-size: 13px; }
+.gs-conn-open { margin-left: auto; }
+.gs-conn-path {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 12px;
+}
+.gs-conn-path-label { color: var(--muted); }
+.gs-conn-pos { opacity: .7; }
+.gs-conn-nav { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.gs-conn-step {
+  cursor: pointer; font-size: 12px;
+  color: var(--ink); background: rgba(0,0,0,.22);
+  border: 1px solid var(--line); padding: 3px 10px; border-radius: 999px;
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.gs-conn-step:hover { border-color: var(--accent-deep); color: var(--accent); }
+.gs-conn-edge { font-size: 11.5px; color: var(--muted); opacity: .75; }
+
+/* progression paths panel */
+.gs-paths-panel {
+  margin: 4px 0 14px; border: 1px solid var(--accent-border);
+  border-radius: 12px; background: var(--accent-softer); overflow: hidden;
+}
+.gs-paths-panel > summary {
+  cursor: pointer; list-style: none; user-select: none;
+  padding: 12px 14px; font-size: 13.5px; font-weight: 600; color: var(--accent-strong);
+}
+.gs-paths-panel > summary::-webkit-details-marker { display: none; }
+.gs-paths-ico { margin-right: 4px; }
+.gs-paths-body { padding: 4px 14px 14px; display: grid; gap: 14px; }
+.gs-path { border-left: 3px solid var(--accent); padding-left: 12px; }
+.gs-path-head { font-size: 14px; font-weight: 700; color: var(--ink); }
+.gs-path-desc { font-size: 12.5px; color: var(--muted); margin: 2px 0 8px; line-height: 1.5; }
+.gs-path-steps { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.gs-path-step {
+  cursor: pointer; font-size: 12.5px;
+  color: var(--ink); background: rgba(0,0,0,.22);
+  border: 1px solid var(--line); padding: 4px 11px; border-radius: 8px;
+}
+.gs-path-step:hover { border-color: var(--accent-deep); color: var(--accent); background: var(--accent-soft); }
+.gs-path-arrow { color: var(--muted); font-size: 14px; }
+
+/* flash when jumping to a topic */
+.gs-flash { animation: gsFlash 1.2s ease; }
+@keyframes gsFlash {
+  0%   { box-shadow: 0 0 0 0 var(--accent); }
+  20%  { box-shadow: 0 0 0 3px var(--accent-soft); border-color: var(--accent); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
 @media (max-width: 540px) {
+  .gs-unit-head { flex-wrap: wrap; }
+  .gs-conn-open { margin-left: 0; }
   .pt-keypad { grid-template-columns: repeat(4, 1fr); }
   .pt-chip { flex: 1 1 calc(50% - 8px); justify-content: center; }
 }
