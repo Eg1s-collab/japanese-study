@@ -24,6 +24,7 @@ window.DictationView = (function () {
     shuffle: true,
     autoSpeak: true,
     starredOnly: false,
+    daily: false,    // session pulls from the shared daily-words pool (read mode)
     expandedDeckId: null  // deck whose chunk-picker is open on the home screen
   };
 
@@ -183,6 +184,41 @@ window.DictationView = (function () {
     });
   }
 
+  function isReadEligible(front) {
+    if (!hasJapanese(front) || !extractReadings(front)) return false;
+    return !isKanaOnly(frontDisplay(front));
+  }
+
+  // The daily review keeps its OWN pool (DictationDaily), independent of the
+  // flashcards "คำประจำวัน". Only the candidate knowledge (struggled vs.
+  // mastered words) is shared. Tell DictationDaily which words qualify as
+  // kanji-reading questions.
+  if (window.DictationDaily) window.DictationDaily.setEligibility(isReadEligible);
+
+  /* ---------- daily-words pool (read mode) ----------
+   * Draws from DictationDaily — a dedicated daily set biased toward struggled
+   * words plus some mastered ones, restricted to kanji-bearing words. Resolve
+   * each {deckId, wordId} ref to its word; each carries its deckId so answers
+   * write progress back to the right deck.
+   */
+  function dailyReadWords() {
+    const FD = window.DictationDaily;
+    if (!FD) return [];
+    const out = [];
+    const seen = new Set();
+    FD.getItems().forEach((it) => {
+      const key = it.deckId + "/" + it.wordId;
+      if (seen.has(key)) return;
+      seen.add(key);
+      const d = FS().getDeck(it.deckId);
+      if (!d) return;
+      const w = (d.words || []).find((x) => x.id === it.wordId);
+      if (!w || !isReadEligible(w.front)) return;
+      out.push(Object.assign({}, w, { deckId: it.deckId }));
+    });
+    return out;
+  }
+
   /* ---------- chunk panel (inline on home cards) ----------
    * Mirrors the flashcards deck-detail chunk picker but rendered in place,
    * so the user can pick sub-sets without leaving the dictation tab.
@@ -279,14 +315,33 @@ window.DictationView = (function () {
 
   /* ---------- hint options (read mode) ----------
    * Build 4 reading choices: the correct reading + 3 distractors drawn from
-   * the same pool. Prefer distractors of similar length so the choice isn't
-   * trivially decided by character count.
+   * the same pool. Score each candidate for closeness to the correct reading
+   * (shared first/last mora, equal length, overlapping characters) so the
+   * decoys look genuinely confusable rather than obviously off.
    */
+  function readingCloseness(correct, cand) {
+    if (cand === correct) return -Infinity;
+    let score = 0;
+    score -= Math.abs(cand.length - correct.length) * 2;
+    if (cand.length === correct.length) score += 4;
+    if (cand[0] === correct[0]) score += 3;
+    if (cand[cand.length - 1] === correct[correct.length - 1]) score += 2;
+    const inCorrect = new Set(correct.split(""));
+    cand.split("").forEach((c) => { if (inCorrect.has(c)) score += 1; });
+    return score;
+  }
   function buildHintOptions(word, pool) {
     const readings = extractReadings(word.front) || [];
     const correct = readings[0];
     if (!correct) return [];
-    const targetLen = correct.length;
+    // Okurigana: the kana shown in the kanji form reappear in the reading at
+    // the same edge (e.g. 悪い → ends い, 大きい → ends きい, お金 → starts お).
+    // Every choice should carry the same kana in that spot, not just the answer.
+    const display = frontDisplay(word.front);
+    const tailRun = (display.match(/[\u3040-\u309fー]+$/) || [""])[0];
+    const head = (display.match(/^[\u3040-\u309fー]+/) || [""])[0];
+    const headOk = (r) => !head || r.startsWith(head);
+
     const cands = [];
     const seen = new Set([correct]);
     pool.forEach((w) => {
@@ -298,10 +353,36 @@ window.DictationView = (function () {
       seen.add(r);
       cands.push(r);
     });
-    const sameLen = cands.filter((r) => r.length === targetLen);
-    const nearLen = cands.filter((r) => Math.abs(r.length - targetLen) <= 1);
-    let bucket = sameLen.length >= 3 ? sameLen : (nearLen.length >= 3 ? nearLen : cands);
-    const picks = shuffleArr(bucket).slice(0, 3);
+
+    const byClose = (a, b) => readingCloseness(correct, b) - readingCloseness(correct, a);
+
+    // Trailing-okurigana variants, deepest first: "める" → ["める", "る"].
+    // Use the deepest tail that has ≥3 sharing decoys; otherwise the shallowest
+    // (the last kana alone) so at least the final position matches everywhere.
+    const tails = [];
+    for (let k = 0; k < tailRun.length; k++) tails.push(tailRun.slice(k));
+    let matching;
+    if (!tails.length) {
+      matching = cands.filter(headOk).sort(byClose);
+    } else {
+      matching = [];
+      for (let i = 0; i < tails.length; i++) {
+        const set = cands.filter((r) => headOk(r) && r.endsWith(tails[i])).sort(byClose);
+        if (set.length >= 3 || i === tails.length - 1) { matching = set; break; }
+      }
+    }
+    const chosen = new Set(matching);
+    const others = cands.filter((r) => !chosen.has(r)).sort(byClose);
+
+    let picks;
+    if (matching.length >= 3) {
+      // Enough okurigana-sharing decoys: sample from the closest handful.
+      const topPool = matching.slice(0, Math.max(3, Math.min(6, matching.length)));
+      picks = shuffleArr(topPool).slice(0, 3);
+    } else {
+      // Too few — keep all that match, then fill with the closest remaining.
+      picks = matching.concat(others.slice(0, 3 - matching.length));
+    }
     return shuffleArr([correct, ...picks]);
   }
 
@@ -316,6 +397,81 @@ window.DictationView = (function () {
     const fresh = render();
     container.replaceWith(fresh);
     return fresh;
+  }
+
+  /* ---------- daily-words card (read-mode home) ----------
+   * Its own daily set (DictationDaily) — separate goal/regenerate from the
+   * flashcards "คำประจำวัน". Starting it drills today's words as kanji-reading
+   * questions.
+   */
+  function renderDailyCard(homeRoot) {
+    const FD = window.DictationDaily;
+    const card = document.createElement("section");
+    card.className = "card daily-card";
+    const goal = FD.getGoalCount();
+    const words = dailyReadWords();
+    const total = words.length;
+    const reviewed = words.filter((w) => {
+      const it = FD.getItems().find((x) => x.deckId === w.deckId && x.wordId === w.id);
+      return it && (it.state === "learnDone");
+    }).length;
+    const pct = total ? Math.round((reviewed / total) * 100) : 0;
+    const allDone = total > 0 && reviewed >= total;
+
+    card.innerHTML = `
+      <div class="daily-head">
+        <div class="daily-title-row">
+          <span class="daily-emoji">📅</span>
+          <h3 class="daily-title">คำประจำวัน · ทบทวนอ่านคันจิ</h3>
+          <span class="daily-target subtle">${total}/${goal} คำ</span>
+        </div>
+        <div class="btn-row" style="margin:0;">
+          <button class="btn ghost" id="dictDailyRegen" title="สลับคำประจำวันชุดใหม่">↻ สุ่มใหม่</button>
+          <button class="btn ghost" id="dictDailyGoal" title="ตั้งจำนวนคำต่อวัน">⚙ ตั้งจำนวน</button>
+        </div>
+      </div>
+      ${total === 0 ? `
+        <p class="subtle daily-empty">ยังไม่มีคำที่มีคันจิให้ทบทวน — ฝึก Flash Card/Learn ในบัตรคำสักรอบ แล้วระบบจะดึงคำที่เคย “ยังไม่ได้” มาทบทวนที่นี่</p>
+      ` : `
+        <div class="daily-stat" style="margin-top:8px;">
+          <div class="daily-stat-row">
+            <span><strong>${reviewed}</strong> / ${total} คำทบทวนวันนี้</span>
+            ${allDone ? `<span class="subtle">· ครบแล้ว ✓</span>` : ""}
+          </div>
+          <div class="progress ${allDone ? "ok" : ""}"><div class="bar" style="width:${pct}%"></div></div>
+        </div>
+        <p class="subtle" style="margin:8px 0 0;">ทบทวนคำที่เคยผิดและคำที่เคยทำได้แล้ว — ชุดเฉพาะของอ่านคันจิ แยกจาก “คำประจำวัน” ในบัตรคำ</p>
+        <div class="btn-row daily-actions">
+          <button class="btn primary" id="dictDailyStart">📅 เริ่มทบทวน (${total} คำ)</button>
+        </div>
+      `}
+    `;
+    const regen = card.querySelector("#dictDailyRegen");
+    if (regen) regen.addEventListener("click", () => {
+      if (!confirm("สุ่มคำประจำวันชุดใหม่? ความคืบหน้าของชุดเดิมจะถูกแทนที่")) return;
+      FD.regenerate();
+      refresh(homeRoot);
+    });
+    const goalBtn = card.querySelector("#dictDailyGoal");
+    if (goalBtn) goalBtn.addEventListener("click", () => {
+      const v = prompt(`จำนวนคำต่อวัน (${FD.MIN_COUNT}–${FD.MAX_COUNT}):`, String(FD.getGoalCount()));
+      if (v == null) return;
+      const n = parseInt(v, 10);
+      if (!Number.isFinite(n) || n < FD.MIN_COUNT || n > FD.MAX_COUNT) {
+        alert(`กรุณาใส่ตัวเลขระหว่าง ${FD.MIN_COUNT} ถึง ${FD.MAX_COUNT}`);
+        return;
+      }
+      FD.setGoalCount(n);
+      refresh(homeRoot);
+    });
+    const start = card.querySelector("#dictDailyStart");
+    if (start) start.addEventListener("click", () => {
+      state.daily = true;
+      state.deckId = null;
+      state.screen = "session";
+      refresh(homeRoot);
+    });
+    return card;
   }
 
   /* ===================== HOME (deck picker) ===================== */
@@ -354,6 +510,11 @@ window.DictationView = (function () {
       });
     });
     const body = root.querySelector("#fc-body");
+
+    // Daily-words review — read mode only, at the library root (not inside a folder).
+    if (!isListen && !state.folderId && window.DictationDaily) {
+      body.appendChild(renderDailyCard(root));
+    }
 
     if (!state.folderId && data.folders.length) {
       const folders = document.createElement("div");
@@ -403,7 +564,7 @@ window.DictationView = (function () {
         card.querySelector("[data-start]").addEventListener("click", (e) => {
           e.stopPropagation();
           if (eligible === 0) return;
-          state.screen = "session"; state.deckId = d.id;
+          state.screen = "session"; state.deckId = d.id; state.daily = false;
           refresh(root);
         });
         card.querySelector("[data-chunks]").addEventListener("click", (e) => {
@@ -436,26 +597,64 @@ window.DictationView = (function () {
 
   /* ===================== SESSION ===================== */
   function renderSession() {
-    const deck = FS().getDeck(state.deckId);
+    if (state.daily) state.mode = "read";  // daily review is always kanji-reading
+    const deck = state.daily ? null : FS().getDeck(state.deckId);
     const root = document.createElement("div");
-    if (!deck) { state.screen = "home"; return renderHome(); }
+    if (!state.daily && !deck) { state.screen = "home"; return renderHome(); }
 
-    let pool = eligibleWords(deck);
-    if (state.starredOnly) pool = pool.filter((w) => w.starred);
-    if (state.shuffle) pool = shuffleArr(pool);
+    const BATCH_SIZE = 10;
+    const sessionTitle = state.daily ? "คำประจำวัน · ทบทวน" : deck.name;
 
-    let idx = 0;
+    function buildPool() {
+      let p = state.daily ? dailyReadWords() : eligibleWords(deck);
+      if (state.starredOnly) p = p.filter((w) => w.starred);
+      if (state.shuffle) p = shuffleArr(p);
+      return p;
+    }
+    // In daily mode a correct/wrong answer writes progress back to the source
+    // deck (and the dictation daily pool) so tomorrow keeps surfacing weak words.
+    function recordDaily(word, ok) {
+      if (!state.daily || !word || !word.deckId) return;
+      const FD = window.DictationDaily;
+      if (ok) {
+        FS().markLearnCompleted(word.deckId, word.id);
+        if (FD) FD.setItemState(word.deckId, word.id, "learnDone");
+      } else {
+        FS().markCardUnknown(word.deckId, word.id);
+        if (FD) FD.setItemState(word.deckId, word.id, "cardsUnknown");
+      }
+    }
+
+    let pool = buildPool();
+
+    // Learn-style batching: work through the pool 10 words at a time. A wrong
+    // answer re-queues that word at the end of the current batch, so the batch
+    // isn't finished until every word in it has been answered correctly once.
+    let batchStart = 0;            // index in `pool` of the current batch's first word
+    let batchQueue = [];           // working queue for the batch (wrongs get re-appended)
+    let batchPos = 0;              // cursor into batchQueue
+    let batchSize = 0;             // distinct words in the current batch
+    let batchMastered = new Set(); // ids answered correctly in the current batch
     let answered = false;
     let correctCount = 0;
     let wrongCount = 0;
     // Words the user got wrong this session — offered as a "retry only these" round.
     const wrongIds = [];
+    // Hint panel (read mode) stays open across questions once the user opens it.
+    let hintOpen = false;
 
-    function currentWord() { return pool[idx] || null; }
+    function startBatch() {
+      const slice = pool.slice(batchStart, batchStart + BATCH_SIZE);
+      batchSize = slice.length;
+      batchQueue = slice.slice();
+      batchPos = 0;
+      batchMastered = new Set();
+    }
+    function currentWord() { return batchQueue[batchPos] || null; }
 
     function goBack() {
       if (window.speechSynthesis) window.speechSynthesis.cancel();
-      state.screen = "home"; refresh(root);
+      state.screen = "home"; state.daily = false; refresh(root);
     }
 
     function renderHeader() {
@@ -466,7 +665,7 @@ window.DictationView = (function () {
         : "ดูคันจิ แล้วพิมพ์คำอ่านเป็นฮิรางานะหรือโรมาจิ";
       return `
         <div class="qmeta">
-          <h2 style="margin:0;">${icon} ${escapeHtml(deck.name)}</h2>
+          <h2 style="margin:0;">${icon} ${escapeHtml(sessionTitle)}</h2>
           <button class="btn ghost" id="back">← กลับ</button>
         </div>
         <p class="subtle">${hint} · ${pool.length} คำในรอบนี้</p>
@@ -523,7 +722,7 @@ window.DictationView = (function () {
       }
 
       // End of session
-      if (idx >= pool.length) {
+      if (batchStart >= pool.length) {
         const total = correctCount + wrongCount;
         const pct = total ? Math.round((correctCount / total) * 100) : 0;
         root.innerHTML = `
@@ -550,17 +749,16 @@ window.DictationView = (function () {
           const ids = new Set(wrongIds);
           pool = pool.filter((w) => ids.has(w.id));
           if (state.shuffle) pool = shuffleArr(pool);
-          idx = 0; correctCount = 0; wrongCount = 0; answered = false;
+          batchStart = 0; correctCount = 0; wrongCount = 0; answered = false;
           wrongIds.length = 0;
+          startBatch();
           draw();
         });
         root.querySelector("#restart").addEventListener("click", () => {
-          let fresh = eligibleWords(FS().getDeck(deck.id));
-          if (state.starredOnly) fresh = fresh.filter((w) => w.starred);
-          if (state.shuffle) fresh = shuffleArr(fresh);
-          pool = fresh;
-          idx = 0; correctCount = 0; wrongCount = 0; answered = false;
+          pool = buildPool();
+          batchStart = 0; correctCount = 0; wrongCount = 0; answered = false;
           wrongIds.length = 0;
+          startBatch();
           draw();
         });
         root.querySelector("#back2").addEventListener("click", goBack);
@@ -569,7 +767,12 @@ window.DictationView = (function () {
 
       const w = currentWord();
       const total = pool.length;
-      const pct = total ? Math.round((idx / total) * 100) : 0;
+      const overallDone = batchStart + batchMastered.size;
+      const pct = total ? Math.round((overallDone / total) * 100) : 0;
+      const batchNum = Math.floor(batchStart / BATCH_SIZE) + 1;
+      const batchTotal = Math.ceil(total / BATCH_SIZE) || 1;
+      // A word re-queued after a wrong answer is a review attempt.
+      const isReview = wrongIds.includes(w.id) && !batchMastered.has(w.id);
 
       const isListen = state.mode === "listen";
       const promptInner = isListen
@@ -584,7 +787,7 @@ window.DictationView = (function () {
       root.innerHTML = `
         ${renderHeader()}
         ${renderToolbar()}
-        <div class="qprog">ข้อ ${idx + 1} / ${total} · ถูก ${correctCount} · ผิด ${wrongCount}</div>
+        <div class="qprog">ชุด ${batchNum}/${batchTotal} · ในชุดนี้ ${batchMastered.size}/${batchSize}${isReview ? ` · 🔁 ทบทวน` : ""} · ถูก ${correctCount} · ผิด ${wrongCount}</div>
         <div class="progress"><div class="bar" style="width:${pct}%"></div></div>
 
         <div class="card">
@@ -613,18 +816,22 @@ window.DictationView = (function () {
         const slot = root.querySelector("#kbSlot");
         if (slot) slot.appendChild(window.KanaKeypad.create(input));
       }
-      input.focus();
+      // When the hint is open in read mode the user answers by tapping a
+      // choice, so don't steal focus (which would pop the on-screen keyboard).
+      if (!(state.mode === "read" && hintOpen)) input.focus();
 
       root.querySelector("#speakBtn").addEventListener("click", playCurrent);
 
       function doCheck() {
-        if (answered) return;
+        if (answered) return null;
         const readings = extractReadings(w.front) || [];
         const ok = checkAnswer(input.value, readings);
         answered = true;
+        recordDaily(w, ok);
         const fb = root.querySelector("#fb");
         if (ok) {
           correctCount++;
+          batchMastered.add(w.id);
           fb.innerHTML = `
             <div class="feedback ok">
               <strong>ถูกต้อง ✓</strong>
@@ -636,6 +843,8 @@ window.DictationView = (function () {
         } else {
           wrongCount++;
           if (!wrongIds.includes(w.id)) wrongIds.push(w.id);
+          // Re-queue this word at the end of the batch so it comes back.
+          batchQueue.push(w);
           fb.innerHTML = `
             <div class="feedback bad">
               <strong>ยังไม่ถูก ✗</strong>
@@ -646,10 +855,20 @@ window.DictationView = (function () {
               </div>
             </div>`;
         }
+        return ok;
       }
       function doNext() {
-        idx++;
         answered = false;
+        batchPos++;
+        // Skip any re-queued copies of words already mastered this batch.
+        while (batchPos < batchQueue.length && batchMastered.has(batchQueue[batchPos].id)) {
+          batchPos++;
+        }
+        if (batchPos >= batchQueue.length) {
+          // Batch fully answered — advance to the next 10-word batch.
+          batchStart += BATCH_SIZE;
+          if (batchStart < pool.length) startBatch();
+        }
         draw();
       }
       function doReveal() {
@@ -669,27 +888,50 @@ window.DictationView = (function () {
       root.querySelector("#showBtn").addEventListener("click", doReveal);
       root.querySelector("#skipBtn").addEventListener("click", doNext);
 
-      const hintBtn = root.querySelector("#hintBtn");
-      if (hintBtn) hintBtn.addEventListener("click", () => {
+      // Render (or clear) the choice hint for the *current* word. Called on
+      // every draw so the panel persists across questions once opened.
+      function renderHint() {
         const slot = root.querySelector("#hintSlot");
-        if (slot.dataset.shown === "1") { slot.innerHTML = ""; slot.dataset.shown = ""; return; }
+        if (!slot) return;
+        if (!hintOpen) { slot.innerHTML = ""; return; }
         const opts = buildHintOptions(w, pool);
-        if (!opts.length) return;
+        if (!opts.length) { slot.innerHTML = ""; return; }
+        const correct = (extractReadings(w.front) || [])[0];
         slot.innerHTML = `
           <div class="dict-hint">
-            <div class="subtle" style="margin-bottom:6px;">💡 เลือกคำอ่านที่คิดว่าใช่ — กดเพื่อเติมในช่องคำตอบ</div>
+            <div class="subtle" style="margin-bottom:6px;">💡 เลือกคำอ่านที่ใช่ — ระบบจะตรวจและไปข้อถัดไปให้</div>
             <div class="dict-hint-grid">
               ${opts.map((o) => `<button class="btn ghost dict-hint-opt" type="button" data-opt="${escapeHtml(o)}">${escapeHtml(o)}</button>`).join("")}
             </div>
           </div>`;
-        slot.dataset.shown = "1";
         slot.querySelectorAll(".dict-hint-opt").forEach((b) => {
           b.addEventListener("click", () => {
+            if (answered) return;
             input.value = b.dataset.opt;
-            input.focus();
+            const ok = doCheck();
+            // Lock the panel and mark the chosen / correct options.
+            slot.querySelectorAll(".dict-hint-opt").forEach((x) => {
+              x.disabled = true;
+              if (x.dataset.opt === correct) x.classList.add("is-correct");
+            });
+            if (!ok) b.classList.add("is-wrong");
+            setTimeout(doNext, ok ? 700 : 1500);
           });
         });
-      });
+      }
+
+      const hintBtn = root.querySelector("#hintBtn");
+      if (hintBtn) {
+        hintBtn.classList.toggle("primary", hintOpen);
+        hintBtn.classList.toggle("ghost", !hintOpen);
+        hintBtn.addEventListener("click", () => {
+          hintOpen = !hintOpen;
+          hintBtn.classList.toggle("primary", hintOpen);
+          hintBtn.classList.toggle("ghost", !hintOpen);
+          renderHint();
+        });
+      }
+      renderHint();
       input.addEventListener("keydown", (e) => {
         if (e.key === "Enter") {
           if (!answered) doCheck();
@@ -703,6 +945,7 @@ window.DictationView = (function () {
       }
     }
 
+    startBatch();
     draw();
     return root;
   }

@@ -1302,6 +1302,15 @@ h3 { margin: 0 0 6px; font-size: 16px; }
   padding: 10px 12px;
   font-family: inherit;
 }
+.dict-hint-opt:disabled { opacity: .5; }
+.dict-hint-opt.is-correct {
+  background: var(--ok-soft); color: var(--ok);
+  border-color: rgba(110, 231, 160, .55); opacity: 1;
+}
+.dict-hint-opt.is-wrong {
+  background: var(--bad-soft); color: var(--bad);
+  border-color: rgba(255, 138, 138, .55); opacity: 1;
+}
 
 .fc-mode-row {
   display: flex; gap: 14px; align-items: center; justify-content: space-between;

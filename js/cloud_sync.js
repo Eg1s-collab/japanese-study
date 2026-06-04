@@ -49,6 +49,7 @@ const LP_KEY = "jp_lesson_progress_v1";
 const DL_KEY = "jp_daily_v1";
 const FS_KEY = "jp_flashcards_streak_v1";
 const FD_KEY = "jp_flashcards_daily_v1";
+const DD_KEY = "jp_dictation_daily_v1";
 
 let currentUser = null;
 let pushTimer = null;
@@ -140,6 +141,7 @@ async function pullAndMerge() {
     const localDl = JSON.parse(localStorage.getItem(DL_KEY) || "null");
     const localFs = JSON.parse(localStorage.getItem(FS_KEY) || "null");
     const localFd = JSON.parse(localStorage.getItem(FD_KEY) || "null");
+    const localDd = JSON.parse(localStorage.getItem(DD_KEY) || "null");
 
     const mergedBm = mergeBookmarks(cloud ? cloud.bookmarks : [], localBm);
     let mergedCj = mergeConj(cloud ? cloud.conjugation : {}, localCj);
@@ -179,6 +181,12 @@ async function pullAndMerge() {
       ? window.FlashcardsDaily.mergeForCloud(localFd, cloudFd)
       : (cloudFd || localFd || { goalCount: 100, date: "", items: [], updatedAt: 0 });
 
+    // Dictation daily: field-level LWW (its own pool, separate from flashcards)
+    const cloudDd = cloud && cloud.dictationDaily ? cloud.dictationDaily : null;
+    const mergedDd = window.DictationDaily
+      ? window.DictationDaily.mergeForCloud(localDd, cloudDd)
+      : (cloudDd || localDd || { goalCount: 50, date: "", items: [], updatedAt: 0 });
+
     localStorage.setItem(BM_KEY, JSON.stringify(mergedBm));
     localStorage.setItem(CJ_KEY, JSON.stringify(mergedCj));
     localStorage.setItem(FC_KEY, JSON.stringify(mergedFc));
@@ -186,11 +194,15 @@ async function pullAndMerge() {
     localStorage.setItem(DL_KEY, JSON.stringify(mergedDl));
     localStorage.setItem(FS_KEY, JSON.stringify(mergedFs));
     localStorage.setItem(FD_KEY, JSON.stringify(mergedFd));
+    localStorage.setItem(DD_KEY, JSON.stringify(mergedDd));
     if (window.FlashcardsStreak && window.FlashcardsStreak.setFromCloud) {
       window.FlashcardsStreak.setFromCloud(mergedFs);
     }
     if (window.FlashcardsDaily && window.FlashcardsDaily.setFromCloud) {
       window.FlashcardsDaily.setFromCloud(mergedFd);
+    }
+    if (window.DictationDaily && window.DictationDaily.setFromCloud) {
+      window.DictationDaily.setFromCloud(mergedDd);
     }
 
     await setDoc(ref, {
@@ -201,6 +213,7 @@ async function pullAndMerge() {
       daily: mergedDl,
       flashcardsStreak: mergedFs,
       flashcardsDaily: mergedFd,
+      dictationDaily: mergedDd,
       updatedAt: serverTimestamp(),
       clientTs: Date.now()
     });
@@ -227,6 +240,7 @@ async function pushNow() {
       daily: JSON.parse(localStorage.getItem(DL_KEY) || "null") || { wrong: {}, settings: { maxCount: 10 }, sessions: {}, updatedAt: 0 },
       flashcardsStreak: JSON.parse(localStorage.getItem(FS_KEY) || "null") || { goal: 50, days: {}, updatedAt: 0 },
       flashcardsDaily: JSON.parse(localStorage.getItem(FD_KEY) || "null") || { goalCount: 100, date: "", items: [], updatedAt: 0 },
+      dictationDaily: JSON.parse(localStorage.getItem(DD_KEY) || "null") || { goalCount: 50, date: "", items: [], updatedAt: 0 },
       updatedAt: serverTimestamp(),
       clientTs: Date.now()
     });
