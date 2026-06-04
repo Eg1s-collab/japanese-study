@@ -14,3 +14,6 @@
 
 # Node (future)
 node_modules/
+
+# Firebase deploy cache (local only)
+.firebase/
