@@ -56,23 +56,36 @@ window.FlashcardsDaily = (function () {
     return out;
   }
   function emptyState() {
-    return { goalCount: DEFAULT_COUNT, date: "", items: [], deckIds: [], updatedAt: 0 };
+    return { goalCount: DEFAULT_COUNT, date: "", items: [], deckIds: [], settingsAt: 0, poolAt: 0, updatedAt: 0 };
+  }
+  // Settings (goalCount + deckIds) and the daily pool (date + items) carry
+  // independent timestamps so they can be cloud-merged separately. Legacy
+  // docs only had `updatedAt` — backfill both clocks from it so an old
+  // settings change isn't silently lost on the first field-level merge.
+  function normalize(raw) {
+    if (!raw || typeof raw !== "object") return emptyState();
+    const updatedAt = raw.updatedAt || 0;
+    return {
+      goalCount: clampCount(raw.goalCount),
+      date: raw.date || "",
+      items: Array.isArray(raw.items) ? raw.items : [],
+      deckIds: cleanDeckIds(raw.deckIds),
+      settingsAt: raw.settingsAt || updatedAt,
+      poolAt: raw.poolAt || updatedAt,
+      updatedAt
+    };
   }
   function load() {
     try {
-      const raw = JSON.parse(localStorage.getItem(KEY));
-      if (!raw || typeof raw !== "object") return emptyState();
-      return {
-        goalCount: clampCount(raw.goalCount),
-        date: raw.date || "",
-        items: Array.isArray(raw.items) ? raw.items : [],
-        deckIds: cleanDeckIds(raw.deckIds),
-        updatedAt: raw.updatedAt || 0
-      };
+      return normalize(JSON.parse(localStorage.getItem(KEY)));
     } catch (e) { return emptyState(); }
   }
-  function save(state, opts) {
-    state.updatedAt = Date.now();
+  // `touch` selects which clock(s) to bump: "settings", "pool", or "both".
+  function save(state, touch, opts) {
+    const now = Date.now();
+    if (touch === "settings" || touch === "both") state.settingsAt = now;
+    if (touch === "pool" || touch === "both") state.poolAt = now;
+    state.updatedAt = now;
     localStorage.setItem(KEY, JSON.stringify(state));
     if (!opts || !opts.skipCloud) {
       if (window.CloudSync) window.CloudSync.notifyChange();
@@ -148,7 +161,7 @@ window.FlashcardsDaily = (function () {
     if (s.date === today && s.items.length && !(opts && opts.force)) return s;
     s.date = today;
     s.items = buildPool(s.goalCount, s.deckIds);
-    save(s, opts);
+    save(s, "pool", opts);
     return s;
   }
 
@@ -183,7 +196,7 @@ window.FlashcardsDaily = (function () {
     // Regenerate today's pool to the new size (best UX = honor latest goal).
     s.date = thailandDate();
     s.items = buildPool(s.goalCount, s.deckIds);
-    save(s);
+    save(s, "both");
     return s.goalCount;
   }
   function setDeckIds(ids) {
@@ -193,7 +206,7 @@ window.FlashcardsDaily = (function () {
     // so the user sees the new filter take effect immediately.
     s.date = thailandDate();
     s.items = buildPool(s.goalCount, s.deckIds);
-    save(s);
+    save(s, "both");
     return s.deckIds.slice();
   }
   function regenerate() {
@@ -209,20 +222,34 @@ window.FlashcardsDaily = (function () {
     if (!it) return;
     if (it.state === nextState) return;
     it.state = nextState;
-    save(s);
+    save(s, "pool");
   }
 
   /* ---------- cloud hooks ---------- */
   function getForCloud() { return load(); }
   function setFromCloud(state) {
     if (!state || typeof state !== "object") return;
-    localStorage.setItem(KEY, JSON.stringify(state));
+    localStorage.setItem(KEY, JSON.stringify(normalize(state)));
     notify();
   }
+  // Field-level last-write-wins: settings (goalCount + deckIds) and the
+  // daily pool (date + items) are merged on their own clocks. This keeps a
+  // count/deck-set change on one device from being clobbered by unrelated
+  // progress writes — or by another device's nightly pool rebuild.
   function mergeForCloud(localState, cloudState) {
-    const a = localState || emptyState();
-    const b = cloudState || emptyState();
-    return (b.updatedAt || 0) > (a.updatedAt || 0) ? b : a;
+    const a = normalize(localState);
+    const b = normalize(cloudState);
+    const settings = (b.settingsAt || 0) > (a.settingsAt || 0) ? b : a;
+    const pool = (b.poolAt || 0) > (a.poolAt || 0) ? b : a;
+    return {
+      goalCount: settings.goalCount,
+      deckIds: settings.deckIds,
+      date: pool.date,
+      items: pool.items,
+      settingsAt: Math.max(a.settingsAt || 0, b.settingsAt || 0),
+      poolAt: Math.max(a.poolAt || 0, b.poolAt || 0),
+      updatedAt: Math.max(a.updatedAt || 0, b.updatedAt || 0)
+    };
   }
 
   return {
