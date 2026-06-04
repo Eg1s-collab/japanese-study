@@ -1,16 +1,16 @@
 /**
  * Dictation / 聞き取り · 読み — type the reading of a flashcard's front.
  *
- * Two modes share everything below the prompt (input, romaji conversion,
- * scoring, retry-wrong loop):
- *   - "listen": play TTS, the user types the reading they heard
- *   - "read":   show the kanji form, the user types the hiragana reading
+ * One unified drill: TTS plays for every word, and a "show characters" toggle
+ * reveals the kanji form on demand. Off = pure listening; on = read-the-kanji.
+ * Everything below the prompt is shared (input, romaji conversion, scoring,
+ * retry-wrong loop).
  *
  * Reuses the flashcards storage: pick a deck (honouring its chunkSize /
  * selectedChunks), iterate eligible cards, accept hiragana or romaji.
  *
  * Sub-screens (kept in `state.screen`):
- *   - "home":     mode picker + deck browser
+ *   - "home":     deck browser
  *   - "session":  active drill for the selected deck
  */
 window.DictationView = (function () {
@@ -20,11 +20,12 @@ window.DictationView = (function () {
     screen: "home",
     folderId: null,
     deckId: null,
-    mode: "listen",  // "listen" | "read"
+    showChars: true, // reveal the kanji form (toggle); off = listen-only
+    askMeaning: false, // after a correct reading, also quiz the meaning (MC)
     shuffle: true,
     autoSpeak: true,
     starredOnly: false,
-    daily: false,    // session pulls from the shared daily-words pool (read mode)
+    daily: false,    // session pulls from the shared daily-words pool (read-eligible)
     expandedDeckId: null  // deck whose chunk-picker is open on the home screen
   };
 
@@ -167,21 +168,14 @@ window.DictationView = (function () {
   }
 
   /* ---------- eligibility ----------
-   * A word is drill-able only when we can extract a reading AND the
-   * front contains Japanese. In "read" mode we additionally drop pure-kana
-   * words — the kanji-only prompt would equal the answer, which is pointless.
+   * A word is drill-able only when we can extract a reading AND the front
+   * contains Japanese. Audio plays for every word and the kanji form is only
+   * shown on demand, so pure-kana words stay eligible (the listening drill
+   * still works; revealing characters is the user's choice).
    */
-  function eligibleWords(deck, mode) {
-    const m = mode || state.mode;
+  function eligibleWords(deck) {
     const words = FS().chunkWords(deck);
-    return words.filter((w) => {
-      if (!hasJapanese(w.front) || !extractReadings(w.front)) return false;
-      if (m === "read") {
-        const display = frontDisplay(w.front);
-        if (isKanaOnly(display)) return false;
-      }
-      return true;
-    });
+    return words.filter((w) => hasJapanese(w.front) && extractReadings(w.front));
   }
 
   function isReadEligible(front) {
@@ -386,6 +380,35 @@ window.DictationView = (function () {
     return shuffleArr([correct, ...picks]);
   }
 
+  /* ---------- meaning options (post-reading quiz) ----------
+   * Build 4 meaning choices: the word's own meaning + 3 distractors drawn from
+   * the whole flashcards library (every deck's `back`). Returns null when the
+   * word has no meaning or the library can't supply 3 distinct distractors —
+   * in that case the meaning step is simply skipped.
+   */
+  function meaningOf(w) {
+    return String(w && w.back != null ? w.back : "").trim();
+  }
+  function buildMeaningOptions(word) {
+    const correct = meaningOf(word);
+    if (!correct) return null;
+    const data = FS().load();
+    const seen = new Set([correct]);
+    const cands = [];
+    (data.decks || []).forEach((d) => {
+      (d.words || []).forEach((w) => {
+        if (w.id === word.id) return;
+        const m = meaningOf(w);
+        if (!m || seen.has(m)) return;
+        seen.add(m);
+        cands.push(m);
+      });
+    });
+    if (cands.length < 3) return null;
+    const picks = shuffleArr(cands).slice(0, 3);
+    return shuffleArr([correct, ...picks]);
+  }
+
   /* ===================== top-level render ===================== */
   function render() {
     const root = document.createElement("div");
@@ -468,6 +491,7 @@ window.DictationView = (function () {
     if (start) start.addEventListener("click", () => {
       state.daily = true;
       state.deckId = null;
+      state.showChars = true;  // kanji-reading review starts with the kanji shown
       state.screen = "session";
       refresh(homeRoot);
     });
@@ -483,11 +507,8 @@ window.DictationView = (function () {
       : data.decks.filter((d) => !d.folderId);
 
     const root = document.createElement("div");
-    const isListen = state.mode === "listen";
-    const headTitle = isListen ? "🎧 ฟังเขียน · 聞き取り" : "漢 อ่านคันจิ · 読み";
-    const subHint = isListen
-      ? "เปิดเสียง แล้วพิมพ์ฮิรางานะ (หรือโรมาจิ) ที่ได้ยิน — ใช้ชุดคำจาก “บัตรคำ”"
-      : "ดูคันจิ แล้วพิมพ์คำอ่านเป็นฮิรางานะ (หรือโรมาจิ) — ใช้ชุดคำจาก “บัตรคำ”";
+    const headTitle = "🎧 ฟังเขียน · 聞き取り・読み";
+    const subHint = "เปิดเสียงแล้วพิมพ์คำอ่าน (ฮิรางานะหรือโรมาจิ) — กดปุ่มเพื่อแสดง/ซ่อนตัวคันจิได้ · ใช้ชุดคำจาก “บัตรคำ”";
     root.innerHTML = `
       <div class="qmeta">
         <h2 style="margin:0;">${headTitle} ${folder ? "· " + escapeHtml(folder.name) : ""}</h2>
@@ -495,24 +516,13 @@ window.DictationView = (function () {
           ${folder ? `<button class="btn ghost" id="backRoot">← กลับ</button>` : ""}
         </div>
       </div>
-      <div class="fc-toolbar" id="modePicker" role="tablist" aria-label="เลือกโหมด">
-        <button class="btn ${isListen ? "primary" : "ghost"}" data-mode="listen" role="tab" aria-selected="${isListen}">🎧 ฟัง → เขียนคำอ่าน</button>
-        <button class="btn ${!isListen ? "primary" : "ghost"}" data-mode="read" role="tab" aria-selected="${!isListen}">漢 อ่านคันจิ → เขียนคำอ่าน</button>
-      </div>
       <p class="subtle">${subHint}</p>
       <div id="fc-body"></div>
     `;
-    root.querySelectorAll("#modePicker [data-mode]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        if (state.mode === btn.dataset.mode) return;
-        state.mode = btn.dataset.mode;
-        refresh(root);
-      });
-    });
     const body = root.querySelector("#fc-body");
 
-    // Daily-words review — read mode only, at the library root (not inside a folder).
-    if (!isListen && !state.folderId && window.DictationDaily) {
+    // Daily-words review (kanji-reading pool) — at the library root, not inside a folder.
+    if (!state.folderId && window.DictationDaily) {
       body.appendChild(renderDailyCard(root));
     }
 
@@ -545,8 +555,8 @@ window.DictationView = (function () {
         const totalChunk = FS().chunkWords(d).length;
         const card = document.createElement("div");
         card.className = "card unit-card" + (eligible === 0 ? " dim" : "");
-        const badgeIcon = isListen ? "🎧" : "漢";
-        const badgeWord = isListen ? "คำที่ฟังได้" : "คำที่มีคันจิ";
+        const badgeIcon = "🎧";
+        const badgeWord = "คำที่ฝึกได้";
         const expanded = state.expandedDeckId === d.id;
         const chunkLabel = d.chunkSize
           ? `แบ่ง ${d.chunkSize} · เลือก ${FS().selectedChunkIndices(d).length}/${FS().chunkCount(d)} ชุด`
@@ -565,6 +575,7 @@ window.DictationView = (function () {
           e.stopPropagation();
           if (eligible === 0) return;
           state.screen = "session"; state.deckId = d.id; state.daily = false;
+          state.showChars = true;  // show the kanji by default; toggle to listen-only
           refresh(root);
         });
         card.querySelector("[data-chunks]").addEventListener("click", (e) => {
@@ -597,7 +608,6 @@ window.DictationView = (function () {
 
   /* ===================== SESSION ===================== */
   function renderSession() {
-    if (state.daily) state.mode = "read";  // daily review is always kanji-reading
     const deck = state.daily ? null : FS().getDeck(state.deckId);
     const root = document.createElement("div");
     if (!state.daily && !deck) { state.screen = "home"; return renderHome(); }
@@ -636,6 +646,8 @@ window.DictationView = (function () {
     let batchSize = 0;             // distinct words in the current batch
     let batchMastered = new Set(); // ids answered correctly in the current batch
     let answered = false;
+    let meaningPending = false; // reading answered; waiting on the meaning MC
+    let pendingMeaningOpts = null; // meaning choices to show after the reading
     let correctCount = 0;
     let wrongCount = 0;
     // Words the user got wrong this session — offered as a "retry only these" round.
@@ -658,26 +670,21 @@ window.DictationView = (function () {
     }
 
     function renderHeader() {
-      const isListen = state.mode === "listen";
-      const icon = isListen ? "🎧" : "漢";
-      const hint = isListen
-        ? "ฟัง แล้วพิมพ์ฮิรางานะหรือโรมาจิที่ได้ยิน"
-        : "ดูคันจิ แล้วพิมพ์คำอ่านเป็นฮิรางานะหรือโรมาจิ";
       return `
         <div class="qmeta">
-          <h2 style="margin:0;">${icon} ${escapeHtml(sessionTitle)}</h2>
+          <h2 style="margin:0;">🎧 ${escapeHtml(sessionTitle)}</h2>
           <button class="btn ghost" id="back">← กลับ</button>
         </div>
-        <p class="subtle">${hint} · ${pool.length} คำในรอบนี้</p>
+        <p class="subtle">ฟังเสียงแล้วพิมพ์คำอ่าน · กดปุ่มแสดง/ซ่อนคันจิได้ · ${pool.length} คำในรอบนี้</p>
       `;
     }
     function renderToolbar() {
-      const isListen = state.mode === "listen";
       return `
         <div class="fc-toolbar fc-toolbar-sticky">
           <label class="fc-toggle"><input type="checkbox" data-opt="shuffle" ${state.shuffle ? "checked" : ""}/> สลับลำดับ</label>
           <label class="fc-toggle"><input type="checkbox" data-opt="starredOnly" ${state.starredOnly ? "checked" : ""}/> ดาวเท่านั้น</label>
-          ${isListen ? `<label class="fc-toggle"><input type="checkbox" data-opt="autoSpeak" ${state.autoSpeak ? "checked" : ""}/> 🔊 เล่นอัตโนมัติ</label>` : ""}
+          <label class="fc-toggle"><input type="checkbox" data-opt="autoSpeak" ${state.autoSpeak ? "checked" : ""}/> 🔊 เล่นอัตโนมัติ</label>
+          <label class="fc-toggle"><input type="checkbox" data-opt="askMeaning" ${state.askMeaning ? "checked" : ""}/> 📖 ถามความหมาย</label>
         </div>
       `;
     }
@@ -692,6 +699,9 @@ window.DictationView = (function () {
             else playCurrent();
             return;
           }
+          // Asking the meaning doesn't change the pool — it applies from the
+          // next answer onward, so don't reset session progress.
+          if (cb.dataset.opt === "askMeaning") return;
           // Re-enter the session with the new options
           refresh(root);
         });
@@ -709,9 +719,7 @@ window.DictationView = (function () {
     function draw() {
       // No eligible words at all
       if (!pool.length) {
-        const emptyMsg = state.mode === "listen"
-          ? "ไม่มีคำที่ฟังได้ในชุดย่อยนี้"
-          : "ไม่มีคำที่มีคันจิในชุดย่อยนี้";
+        const emptyMsg = "ไม่มีคำที่ฝึกได้ในชุดย่อยนี้";
         root.innerHTML = `
           ${renderHeader()}
           ${renderToolbar()}
@@ -774,15 +782,13 @@ window.DictationView = (function () {
       // A word re-queued after a wrong answer is a review attempt.
       const isReview = wrongIds.includes(w.id) && !batchMastered.has(w.id);
 
-      const isListen = state.mode === "listen";
-      const promptInner = isListen
-        ? `<div class="fc-learn-q" id="prompt" aria-label="เล่นเสียงคำ">🎧</div>
+      const showChars = state.showChars;
+      const promptInner = showChars
+        ? `<div class="fc-learn-q" id="prompt">${escapeHtml(frontDisplay(w.front))}</div>
            <button class="btn primary fc-speak" id="speakBtn" title="เล่นเสียงอีกครั้ง">🔊 เล่นอีกครั้ง</button>`
-        : `<div class="fc-learn-q" id="prompt">${escapeHtml(frontDisplay(w.front))}</div>
-           <button class="btn ghost fc-speak" id="speakBtn" title="ฟังคำอ่าน (เฉลยเสียง)">🔊</button>`;
-      const hintInner = isListen
-        ? `พิมพ์สิ่งที่ได้ยินเป็นฮิรางานะ หรือพิมพ์โรมาจิ เช่น <code>あう</code> หรือ <code>au</code>`
-        : `พิมพ์คำอ่านของคันจิด้านบนเป็นฮิรางานะ หรือพิมพ์โรมาจิ`;
+        : `<div class="fc-learn-q" id="prompt" aria-label="เล่นเสียงคำ">🎧</div>
+           <button class="btn primary fc-speak" id="speakBtn" title="เล่นเสียงอีกครั้ง">🔊 เล่นอีกครั้ง</button>`;
+      const hintInner = `พิมพ์คำอ่านเป็นฮิรางานะ หรือพิมพ์โรมาจิ เช่น <code>あう</code> หรือ <code>au</code>`;
 
       root.innerHTML = `
         ${renderHeader()}
@@ -802,7 +808,8 @@ window.DictationView = (function () {
           <div class="btn-row">
             <button class="btn primary" id="checkBtn">ตรวจ</button>
             <button class="btn ghost" id="showBtn">เฉลย</button>
-            ${!isListen ? `<button class="btn ghost" id="hintBtn">💡 คำใบ้</button>` : ""}
+            <button class="btn ${showChars ? "primary" : "ghost"}" id="charsBtn">${showChars ? "🙈 ซ่อนคันจิ" : "👁 แสดงคันจิ"}</button>
+            <button class="btn ghost" id="hintBtn">💡 คำใบ้</button>
             <button class="btn" id="skipBtn">ข้อถัดไป →</button>
           </div>
           <div id="hintSlot"></div>
@@ -816,12 +823,42 @@ window.DictationView = (function () {
         const slot = root.querySelector("#kbSlot");
         if (slot) slot.appendChild(window.KanaKeypad.create(input));
       }
-      // When the hint is open in read mode the user answers by tapping a
-      // choice, so don't steal focus (which would pop the on-screen keyboard).
-      if (!(state.mode === "read" && hintOpen)) input.focus();
+      // When the hint is open the user answers by tapping a choice, so don't
+      // steal focus (which would pop the on-screen keyboard).
+      if (!hintOpen) input.focus();
 
       root.querySelector("#speakBtn").addEventListener("click", playCurrent);
 
+      // Show/hide the kanji form for the current word. Update the prompt in
+      // place (not a full redraw) so the user's typed answer survives the flip.
+      const charsBtn = root.querySelector("#charsBtn");
+      if (charsBtn) charsBtn.addEventListener("click", () => {
+        state.showChars = !state.showChars;
+        const promptEl = root.querySelector("#prompt");
+        if (promptEl) {
+          if (state.showChars) {
+            promptEl.textContent = frontDisplay(w.front);
+            promptEl.removeAttribute("aria-label");
+          } else {
+            promptEl.textContent = "🎧";
+            promptEl.setAttribute("aria-label", "เล่นเสียงคำ");
+          }
+        }
+        charsBtn.classList.toggle("primary", state.showChars);
+        charsBtn.classList.toggle("ghost", !state.showChars);
+        charsBtn.textContent = state.showChars ? "🙈 ซ่อนคันจิ" : "👁 แสดงคันจิ";
+      });
+
+      // A wrong reading sends the word to the อ่านคันจิ (kanji-reading) review
+      // pool so it resurfaces there. Daily mode already does this via
+      // recordDaily, so only deck sessions need the explicit push.
+      function markReadingReview(word) {
+        const wDeckId = deck && deck.id;
+        if (!wDeckId) return;
+        FS().markCardUnknown(wDeckId, word.id);
+        const FD = window.DictationDaily;
+        if (FD && isReadEligible(word.front)) FD.setItemState(wDeckId, word.id, "cardsUnknown");
+      }
       function doCheck() {
         if (answered) return null;
         const readings = extractReadings(w.front) || [];
@@ -829,6 +866,11 @@ window.DictationView = (function () {
         answered = true;
         recordDaily(w, ok);
         const fb = root.querySelector("#fb");
+        // Decide the meaning quiz first — if it's coming, don't reveal the
+        // meaning in the reading feedback (that would spoil the answer). The
+        // quiz follows BOTH correct and wrong readings when enabled.
+        const mOpts = state.askMeaning ? buildMeaningOptions(w) : null;
+        const showMeaningHere = w.back && !mOpts;
         if (ok) {
           correctCount++;
           batchMastered.add(w.id);
@@ -837,7 +879,7 @@ window.DictationView = (function () {
               <strong>ถูกต้อง ✓</strong>
               <div style="margin-top:4px;">
                 ${escapeHtml(frontDisplay(w.front))} → <b>${escapeHtml(readings[0])}</b>
-                ${w.back ? ` · <span class="subtle">${escapeHtml(w.back)}</span>` : ""}
+                ${showMeaningHere ? ` · <span class="subtle">${escapeHtml(w.back)}</span>` : ""}
               </div>
             </div>`;
         } else {
@@ -845,20 +887,63 @@ window.DictationView = (function () {
           if (!wrongIds.includes(w.id)) wrongIds.push(w.id);
           // Re-queue this word at the end of the batch so it comes back.
           batchQueue.push(w);
+          if (!state.daily) markReadingReview(w);
           fb.innerHTML = `
             <div class="feedback bad">
               <strong>ยังไม่ถูก ✗</strong>
               <div style="margin-top:4px;">
                 เฉลย: <b>${escapeHtml(readings.join(", "))}</b>
                 · ${escapeHtml(frontDisplay(w.front))}
-                ${w.back ? ` · <span class="subtle">${escapeHtml(w.back)}</span>` : ""}
+                ${showMeaningHere ? ` · <span class="subtle">${escapeHtml(w.back)}</span>` : ""}
               </div>
             </div>`;
         }
+        if (mOpts) { meaningPending = true; pendingMeaningOpts = mOpts; }
         return ok;
+      }
+      // Meaning quiz shown after the reading answer (right or wrong). Renders
+      // into #hintSlot by default so the choices appear in the SAME spot the
+      // reading hint occupied — no scroll jump on mobile. A wrong meaning sends
+      // the word to the flashcards review pool (markCardUnknown).
+      function renderMeaning(opts, targetSel) {
+        const slot = root.querySelector(targetSel || "#hintSlot");
+        if (!slot) return;
+        pendingMeaningOpts = null;
+        const correct = meaningOf(w);
+        slot.innerHTML = `
+          <div class="dict-hint">
+            <div class="subtle" style="margin-bottom:6px;">📖 แล้วคำนี้แปลว่าอะไร?</div>
+            <div class="dict-meaning-grid">
+              ${opts.map((o) => `<button class="btn ghost dict-hint-opt dict-meaning-opt" type="button" data-m="${escapeHtml(o)}">${escapeHtml(o)}</button>`).join("")}
+            </div>
+          </div>`;
+        slot.querySelectorAll(".dict-meaning-opt").forEach((b) => {
+          b.addEventListener("click", () => {
+            if (!meaningPending) return;
+            meaningPending = false;
+            const ok = b.dataset.m === correct;
+            slot.querySelectorAll(".dict-meaning-opt").forEach((x) => {
+              x.disabled = true;
+              if (x.dataset.m === correct) x.classList.add("is-correct");
+            });
+            if (!ok) {
+              b.classList.add("is-wrong");
+              const wDeckId = state.daily ? w.deckId : deck.id;
+              FS().markCardUnknown(wDeckId, w.id);
+              const note = document.createElement("div");
+              note.className = "subtle";
+              note.style.marginTop = "6px";
+              note.textContent = "ตอบความหมายผิด — จะนำคำนี้ไปทบทวนในบัตรคำ";
+              slot.appendChild(note);
+            }
+            setTimeout(doNext, ok ? 700 : 1600);
+          });
+        });
       }
       function doNext() {
         answered = false;
+        meaningPending = false;
+        pendingMeaningOpts = null;
         batchPos++;
         // Skip any re-queued copies of words already mastered this batch.
         while (batchPos < batchQueue.length && batchMastered.has(batchQueue[batchPos].id)) {
@@ -884,7 +969,13 @@ window.DictationView = (function () {
             </div>
           </div>`;
       }
-      root.querySelector("#checkBtn").addEventListener("click", doCheck);
+      // Typed-answer check: run the reading check, then if a meaning quiz is
+      // queued, show it in #hintSlot (same place the hint choices live).
+      function checkTyped() {
+        doCheck();
+        if (meaningPending && pendingMeaningOpts) renderMeaning(pendingMeaningOpts);
+      }
+      root.querySelector("#checkBtn").addEventListener("click", checkTyped);
       root.querySelector("#showBtn").addEventListener("click", doReveal);
       root.querySelector("#skipBtn").addEventListener("click", doNext);
 
@@ -915,7 +1006,13 @@ window.DictationView = (function () {
               if (x.dataset.opt === correct) x.classList.add("is-correct");
             });
             if (!ok) b.classList.add("is-wrong");
-            setTimeout(doNext, ok ? 700 : 1500);
+            // After a brief reading-result flash, swap the reading choices for
+            // the meaning quiz in this same slot (no scroll jump). If no quiz
+            // is queued, just advance.
+            setTimeout(() => {
+              if (meaningPending && pendingMeaningOpts) renderMeaning(pendingMeaningOpts);
+              else doNext();
+            }, ok ? 700 : 1500);
           });
         });
       }
@@ -934,12 +1031,12 @@ window.DictationView = (function () {
       renderHint();
       input.addEventListener("keydown", (e) => {
         if (e.key === "Enter") {
-          if (!answered) doCheck();
-          else doNext();
+          if (!answered) checkTyped();
+          else if (!meaningPending) doNext();
         }
       });
 
-      if (state.mode === "listen" && state.autoSpeak) {
+      if (state.autoSpeak) {
         // Slight delay so the synth picks up after the DOM swap on iOS Safari.
         setTimeout(playCurrent, 120);
       }

@@ -1311,6 +1311,16 @@ h3 { margin: 0 0 6px; font-size: 16px; }
   background: var(--bad-soft); color: var(--bad);
   border-color: rgba(255, 138, 138, .55); opacity: 1;
 }
+.dict-meaning-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+.dict-meaning-opt {
+  text-align: left;
+  font-size: 16px;
+  white-space: normal;
+}
 
 .fc-mode-row {
   display: flex; gap: 14px; align-items: center; justify-content: space-between;
