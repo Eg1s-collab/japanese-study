@@ -160,8 +160,6 @@
       node = window.ConjugationView.render();
     } else if (state.tab === "flashcards") {
       node = window.FlashcardsView.render();
-    } else if (state.tab === "dictation") {
-      node = window.DictationView.render();
     } else if (state.tab === "arrange") {
       node = window.ArrangeView.render();
     } else if (state.tab === "bookmarks") {

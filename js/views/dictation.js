@@ -9,16 +9,16 @@
  * Reuses the flashcards storage: pick a deck (honouring its chunkSize /
  * selectedChunks), iterate eligible cards, accept hiragana or romaji.
  *
- * Sub-screens (kept in `state.screen`):
- *   - "home":     deck browser
- *   - "session":  active drill for the selected deck
+ * This module no longer owns a tab of its own. The flashcards view hosts the
+ * drill: it calls renderDeckSession()/renderDailySession() to mount a session,
+ * embeds renderDailyReviewCard() on its home screen, and reads deckStats() for
+ * the per-deck "ฟังเขียน" mode row. "← กลับ" invokes the host's onExit callback.
  */
 window.DictationView = (function () {
   const FS = () => window.FlashcardsStorage;
 
   const state = {
-    screen: "home",
-    folderId: null,
+    screen: "session", // only "session"; the host sets this before mounting
     deckId: null,
     showChars: true, // reveal the kanji form (toggle); off = listen-only
     askMeaning: false, // after a correct reading, also quiz the meaning (MC)
@@ -26,7 +26,7 @@ window.DictationView = (function () {
     autoSpeak: true,
     starredOnly: false,
     daily: false,    // session pulls from the shared daily-words pool (read-eligible)
-    expandedDeckId: null  // deck whose chunk-picker is open on the home screen
+    onExit: null     // host-supplied callback: where "← กลับ" returns to
   };
 
   /* ---------- utils ---------- */
@@ -220,100 +220,6 @@ window.DictationView = (function () {
     return out;
   }
 
-  /* ---------- chunk panel (inline on home cards) ----------
-   * Mirrors the flashcards deck-detail chunk picker but rendered in place,
-   * so the user can pick sub-sets without leaving the dictation tab.
-   */
-  function renderChunkPanel(host, deck, onChange) {
-    function draw() {
-      const d = FS().getDeck(deck.id);
-      const total = d.words.length;
-      const chunkTotal = FS().chunkCount(d);
-      const chunkOpts = [25, 50, 100].map((n) =>
-        `<option value="${n}" ${d.chunkSize === n ? "selected" : ""}>${n} คำ/ชุด</option>`
-      ).join("");
-      const selectedSet = new Set(FS().selectedChunkIndices(d));
-      const chunkChips = d.chunkSize ? Array.from({ length: chunkTotal }, (_, i) => {
-        const from = i * d.chunkSize + 1;
-        const to = Math.min(total, (i + 1) * d.chunkSize);
-        const on = selectedSet.has(i);
-        return `<button class="fc-chunk-chip ${on ? "is-on" : ""}" data-chunk="${i}" aria-pressed="${on}" type="button">
-          <span class="fc-chunk-title">ชุด ${i + 1}</span>
-          <span class="fc-chunk-range">${from}-${to}</span>
-        </button>`;
-      }).join("") : "";
-
-      host.innerHTML = `
-        <div class="fc-chunk-row" style="margin-top:10px;">
-          <label class="fc-toggle" style="gap:8px;">
-            <span>ขนาดชุด:</span>
-            <select data-size class="level-select">
-              <option value="" ${!d.chunkSize ? "selected" : ""}>ทั้งหมด</option>
-              ${chunkOpts}
-              <option value="custom">กำหนดเอง…</option>
-            </select>
-          </label>
-        </div>
-        ${d.chunkSize ? `
-          <p class="subtle" style="margin:8px 0 4px;">เลือกชุดย่อยที่จะฝึก (เลือกหลายชุดได้)</p>
-          <div class="fc-chunk-grid" data-grid>${chunkChips}</div>
-          <div class="fc-chunk-actions">
-            <button class="btn ghost" data-all type="button">เลือกทั้งหมด</button>
-            <button class="btn ghost" data-invert type="button">สลับ</button>
-            <button class="btn ghost" data-clear type="button">ล้าง (ชุด 1)</button>
-          </div>
-        ` : ""}
-        <p class="subtle" style="margin:8px 0 0;">ค่านี้แชร์กับ “บัตรคำ”</p>
-      `;
-      host.querySelector("[data-size]").addEventListener("change", (e) => {
-        const v = e.target.value;
-        if (v === "custom") {
-          const n = prompt("ขนาดต่อชุด (จำนวนคำ):", d.chunkSize || 50);
-          const num = parseInt(n, 10);
-          if (!isNaN(num) && num > 0) FS().setChunkSize(deck.id, num);
-        } else {
-          FS().setChunkSize(deck.id, v ? Number(v) : null);
-        }
-        if (onChange) onChange();
-      });
-      host.querySelectorAll("[data-chunk]").forEach((chip) => {
-        chip.addEventListener("click", (e) => {
-          e.stopPropagation();
-          const idx = Number(chip.dataset.chunk);
-          const current = new Set(FS().selectedChunkIndices(FS().getDeck(deck.id)));
-          if (current.has(idx)) {
-            if (current.size === 1) return;
-            current.delete(idx);
-          } else current.add(idx);
-          FS().setSelectedChunks(deck.id, Array.from(current));
-          if (onChange) onChange();
-        });
-      });
-      const allBtn = host.querySelector("[data-all]");
-      if (allBtn) allBtn.addEventListener("click", () => {
-        const t = FS().chunkCount(FS().getDeck(deck.id));
-        FS().setSelectedChunks(deck.id, Array.from({ length: t }, (_, i) => i));
-        if (onChange) onChange();
-      });
-      const invBtn = host.querySelector("[data-invert]");
-      if (invBtn) invBtn.addEventListener("click", () => {
-        const dk = FS().getDeck(deck.id);
-        const t = FS().chunkCount(dk);
-        const cur = new Set(FS().selectedChunkIndices(dk));
-        const next = [];
-        for (let i = 0; i < t; i++) if (!cur.has(i)) next.push(i);
-        FS().setSelectedChunks(deck.id, next.length ? next : [0]);
-        if (onChange) onChange();
-      });
-      const clrBtn = host.querySelector("[data-clear]");
-      if (clrBtn) clrBtn.addEventListener("click", () => {
-        FS().setSelectedChunks(deck.id, [0]);
-        if (onChange) onChange();
-      });
-    }
-    draw();
-  }
-
   /* ---------- hint options (read mode) ----------
    * Build 4 reading choices: the correct reading + 3 distractors drawn from
    * the same pool. Score each candidate for closeness to the correct reading
@@ -416,11 +322,14 @@ window.DictationView = (function () {
     return shuffleArr([correct, ...picks]);
   }
 
-  /* ===================== top-level render ===================== */
+  /* ===================== session render =====================
+   * The flashcards view mounts a session via renderDeckSession /
+   * renderDailySession. render()/refresh() exist only so the session can
+   * re-render itself in place (e.g. when a pool-changing toggle flips).
+   */
   function render() {
     const root = document.createElement("div");
-    if (state.screen === "home") root.appendChild(renderHome());
-    else if (state.screen === "session") root.appendChild(renderSession());
+    if (state.screen === "session") root.appendChild(renderSession());
     return root;
   }
   function refresh(container) {
@@ -429,15 +338,19 @@ window.DictationView = (function () {
     return fresh;
   }
 
-  /* ---------- daily-words card (read-mode home) ----------
+  /* ---------- daily-words review card (embedded on the flashcards home) ----------
    * Its own daily set (DictationDaily) — separate goal/regenerate from the
-   * flashcards "คำประจำวัน". Starting it drills today's words as kanji-reading
-   * questions.
+   * flashcards "คำประจำวัน". `onStart` hands control to the host to mount the
+   * daily session; `onRefresh` re-renders the host after regen / goal edits.
    */
-  function renderDailyCard(homeRoot) {
+  function renderDailyReviewCard(opts) {
+    opts = opts || {};
+    const onRefresh = opts.onRefresh || function () {};
+    const onStart = opts.onStart || function () {};
     const FD = window.DictationDaily;
     const card = document.createElement("section");
     card.className = "card daily-card";
+    if (!FD) return card;
     const goal = FD.getGoalCount();
     const words = dailyReadWords();
     const total = words.length;
@@ -451,8 +364,8 @@ window.DictationView = (function () {
     card.innerHTML = `
       <div class="daily-head">
         <div class="daily-title-row">
-          <span class="daily-emoji">📅</span>
-          <h3 class="daily-title">คำประจำวัน · ทบทวนอ่านคันจิ</h3>
+          <span class="daily-emoji">🎧</span>
+          <h3 class="daily-title">ทบทวนอ่านคันจิ</h3>
           <span class="daily-target subtle">${total}/${goal} คำ</span>
         </div>
         <div class="btn-row" style="margin:0;">
@@ -461,7 +374,7 @@ window.DictationView = (function () {
         </div>
       </div>
       ${total === 0 ? `
-        <p class="subtle daily-empty">ยังไม่มีคำที่มีคันจิให้ทบทวน — ฝึก Flash Card/Learn ในบัตรคำสักรอบ แล้วระบบจะดึงคำที่เคย “ยังไม่ได้” มาทบทวนที่นี่</p>
+        <p class="subtle daily-empty">ยังไม่มีคำที่มีคันจิให้ทบทวน — ฝึก Flash Card/Learn สักรอบ แล้วระบบจะดึงคำที่เคย “ยังไม่ได้” มาทบทวนที่นี่</p>
       ` : `
         <div class="daily-stat" style="margin-top:8px;">
           <div class="daily-stat-row">
@@ -470,9 +383,9 @@ window.DictationView = (function () {
           </div>
           <div class="progress ${allDone ? "ok" : ""}"><div class="bar" style="width:${pct}%"></div></div>
         </div>
-        <p class="subtle" style="margin:8px 0 0;">ทบทวนคำที่เคยผิดและคำที่เคยทำได้แล้ว — ชุดเฉพาะของอ่านคันจิ แยกจาก “คำประจำวัน” ในบัตรคำ</p>
+        <p class="subtle" style="margin:8px 0 0;">ฟังเสียงแล้วพิมพ์คำอ่านคันจิ — ชุดเฉพาะของอ่านคันจิ แยกจาก “คำประจำวัน”</p>
         <div class="btn-row daily-actions">
-          <button class="btn primary" id="dictDailyStart">📅 เริ่มทบทวน (${total} คำ)</button>
+          <button class="btn primary" id="dictDailyStart">🎧 เริ่มทบทวน (${total} คำ)</button>
         </div>
       `}
     `;
@@ -480,7 +393,7 @@ window.DictationView = (function () {
     if (regen) regen.addEventListener("click", () => {
       if (!confirm("สุ่มคำประจำวันชุดใหม่? ความคืบหน้าของชุดเดิมจะถูกแทนที่")) return;
       FD.regenerate();
-      refresh(homeRoot);
+      onRefresh();
     });
     const goalBtn = card.querySelector("#dictDailyGoal");
     if (goalBtn) goalBtn.addEventListener("click", () => {
@@ -492,156 +405,52 @@ window.DictationView = (function () {
         return;
       }
       FD.setGoalCount(n);
-      refresh(homeRoot);
+      onRefresh();
     });
     const start = card.querySelector("#dictDailyStart");
-    if (start) start.addEventListener("click", () => {
-      state.daily = true;
-      state.deckId = null;
-      state.showChars = true;  // kanji-reading review starts with the kanji shown
-      state.screen = "session";
-      refresh(homeRoot);
-    });
+    if (start) start.addEventListener("click", onStart);
     return card;
   }
 
-  /* ===================== HOME (deck picker) ===================== */
-  function renderHome() {
-    const data = FS().load();
-    const folder = state.folderId ? data.folders.find((f) => f.id === state.folderId) : null;
-    const visibleDecks = state.folderId
-      ? data.decks.filter((d) => d.folderId === state.folderId)
-      : data.decks.filter((d) => !d.folderId);
+  /* ---------- per-deck stats (for the flashcards "ฟังเขียน" mode row) ----------
+   * eligible = drill-able words in the current chunk; done = of those, the
+   * ones already answered correctly. Mirrors the cards/learn mode rows.
+   */
+  function deckStats(deck) {
+    const eligList = eligibleWords(deck);
+    const eligible = eligList.length;
+    const done = deckDoneSet(FS().getDeck(deck.id));
+    const doneCount = eligList.reduce((n, w) => n + (done.has(w.id) ? 1 : 0), 0);
+    return { eligible, done: doneCount, allDone: eligible > 0 && doneCount >= eligible };
+  }
 
-    const root = document.createElement("div");
-    const headTitle = "🎧 ฟังเขียน · 聞き取り・読み";
-    const subHint = "เปิดเสียงแล้วพิมพ์คำอ่าน (ฮิรางานะหรือโรมาจิ) — กดปุ่มเพื่อแสดง/ซ่อนตัวคันจิได้ · ใช้ชุดคำจาก “บัตรคำ”";
-    root.innerHTML = `
-      <div class="qmeta">
-        <h2 style="margin:0;">${headTitle} ${folder ? "· " + escapeHtml(folder.name) : ""}</h2>
-        <div class="btn-row" style="margin:0;">
-          ${folder ? `<button class="btn ghost" id="backRoot">← กลับ</button>` : ""}
-        </div>
-      </div>
-      <p class="subtle">${subHint}</p>
-      <div id="fc-body"></div>
-    `;
-    const body = root.querySelector("#fc-body");
-
-    // Daily-words review (kanji-reading pool) — at the library root, not inside a folder.
-    if (!state.folderId && window.DictationDaily) {
-      body.appendChild(renderDailyCard(root));
-    }
-
-    if (!state.folderId && data.folders.length) {
-      const folders = document.createElement("div");
-      folders.className = "unit-list";
-      data.folders.forEach((f) => {
-        const count = data.decks.filter((d) => d.folderId === f.id).length;
-        const card = document.createElement("div");
-        card.className = "card unit-card";
-        card.innerHTML = `
-          <div class="badge">📁 โฟลเดอร์</div>
-          <h3>${escapeHtml(f.name)}</h3>
-          <p class="subtle">${count} ชุดคำ</p>
-        `;
-        card.addEventListener("click", () => {
-          state.folderId = f.id; refresh(root);
-        });
-        folders.appendChild(card);
-      });
-      body.appendChild(folders);
-    }
-
-    if (visibleDecks.length) {
-      const decks = document.createElement("div");
-      decks.className = "unit-list";
-      decks.style.marginTop = (state.folderId ? "0" : "14px");
-      visibleDecks.forEach((d) => {
-        const eligList = eligibleWords(d);
-        const eligible = eligList.length;
-        const totalChunk = FS().chunkWords(d).length;
-        const card = document.createElement("div");
-        card.className = "card unit-card" + (eligible === 0 ? " dim" : "");
-        const badgeIcon = "🎧";
-        const badgeWord = "คำที่ฝึกได้";
-        const expanded = state.expandedDeckId === d.id;
-        const chunkLabel = d.chunkSize
-          ? `แบ่ง ${d.chunkSize} · เลือก ${FS().selectedChunkIndices(d).length}/${FS().chunkCount(d)} ชุด`
-          : "ทั้งหมด";
-        // Progress = correctly-answered words within the currently eligible set.
-        const doneSet = deckDoneSet(d);
-        const doneCount = eligList.reduce((n, w) => n + (doneSet.has(w.id) ? 1 : 0), 0);
-        const remaining = eligible - doneCount;
-        const pct = eligible ? Math.round((doneCount / eligible) * 100) : 0;
-        const allDone = eligible > 0 && doneCount >= eligible;
-        const startLabel = doneCount === 0
-          ? "เริ่ม"
-          : allDone ? "ทบทวนอีกครั้ง" : `ทำต่อ (เหลือ ${remaining})`;
-        card.innerHTML = `
-          <div class="badge">${badgeIcon} ${eligible} / ${totalChunk} ${badgeWord}</div>
-          <h3>${escapeHtml(d.name)}</h3>
-          <p class="subtle">${chunkLabel} · ${d.words.length} คำในชุด</p>
-          ${eligible ? `
-            <div class="qprog" style="margin-top:6px;">ทำแล้ว ${doneCount}/${eligible} คำ${allDone ? " · ครบแล้ว ✓" : ""}</div>
-            <div class="progress ${allDone ? "ok" : ""}"><div class="bar" style="width:${pct}%"></div></div>
-          ` : ""}
-          <div class="btn-row">
-            <button class="btn primary" data-start ${eligible === 0 ? "disabled" : ""}>${startLabel}</button>
-            ${doneCount > 0 ? `<button class="btn ghost" data-reset title="ล้างความก้าวหน้าของชุดนี้">↻ เริ่มใหม่</button>` : ""}
-            <button class="btn ghost" data-chunks aria-expanded="${expanded}">⚙ ชุดย่อย${expanded ? " ▲" : " ▼"}</button>
-          </div>
-          <div class="dict-chunk-panel" data-chunk-panel ${expanded ? "" : "hidden"}></div>
-        `;
-        card.querySelector("[data-start]").addEventListener("click", (e) => {
-          e.stopPropagation();
-          if (eligible === 0) return;
-          // Finished decks restart from scratch; partial decks resume the rest.
-          if (allDone) FS().clearProgress(d.id, "dictation");
-          state.screen = "session"; state.deckId = d.id; state.daily = false;
-          state.showChars = true;  // show the kanji by default; toggle to listen-only
-          refresh(root);
-        });
-        const resetBtn = card.querySelector("[data-reset]");
-        if (resetBtn) resetBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          if (!confirm("ล้างความก้าวหน้าฟังเขียนของชุดนี้?")) return;
-          FS().clearProgress(d.id, "dictation");
-          refresh(root);
-        });
-        card.querySelector("[data-chunks]").addEventListener("click", (e) => {
-          e.stopPropagation();
-          state.expandedDeckId = expanded ? null : d.id;
-          refresh(root);
-        });
-        if (expanded) {
-          renderChunkPanel(card.querySelector("[data-chunk-panel]"), d, () => refresh(root));
-        }
-        decks.appendChild(card);
-      });
-      body.appendChild(decks);
-    }
-
-    if (!data.folders.length && !visibleDecks.length) {
-      const empty = document.createElement("div");
-      empty.className = "empty";
-      empty.textContent = "ยังไม่มีชุดคำ — ไปสร้างที่แท็บ “บัตรคำ” ก่อน";
-      body.appendChild(empty);
-    }
-
-    if (folder) {
-      root.querySelector("#backRoot").addEventListener("click", () => {
-        state.folderId = null; refresh(root);
-      });
-    }
-    return root;
+  /* ---------- session mount points (called by the flashcards host) ---------- */
+  function renderDeckSession(deckId, onExit) {
+    state.screen = "session";
+    state.deckId = deckId;
+    state.daily = false;
+    state.showChars = true;  // show the kanji by default; toggle to listen-only
+    state.onExit = onExit || null;
+    return render();
+  }
+  function renderDailySession(onExit) {
+    state.screen = "session";
+    state.deckId = null;
+    state.daily = true;
+    state.showChars = true;  // kanji-reading review starts with the kanji shown
+    state.onExit = onExit || null;
+    return render();
   }
 
   /* ===================== SESSION ===================== */
   function renderSession() {
     const deck = state.daily ? null : FS().getDeck(state.deckId);
     const root = document.createElement("div");
-    if (!state.daily && !deck) { state.screen = "home"; return renderHome(); }
+    if (!state.daily && !deck) {
+      // Deck vanished (e.g. deleted) — bounce back to the host.
+      if (state.onExit) { const cb = state.onExit; state.onExit = null; cb(); }
+      return root;
+    }
 
     const BATCH_SIZE = 10;
     const sessionTitle = state.daily ? "คำประจำวัน · ทบทวน" : deck.name;
@@ -704,7 +513,10 @@ window.DictationView = (function () {
 
     function goBack() {
       if (window.speechSynthesis) window.speechSynthesis.cancel();
-      state.screen = "home"; state.daily = false; refresh(root);
+      const cb = state.onExit;
+      state.onExit = null;
+      state.daily = false;
+      if (cb) cb();
     }
 
     function renderHeader() {
@@ -1091,5 +903,5 @@ window.DictationView = (function () {
     return root;
   }
 
-  return { render };
+  return { renderDeckSession, renderDailySession, renderDailyReviewCard, deckStats, isReadEligible };
 })();

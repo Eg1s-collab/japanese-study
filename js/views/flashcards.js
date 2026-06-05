@@ -28,7 +28,10 @@ window.FlashcardsView = (function () {
     // specific subset of wordIds (the cards the user marked "ยังไม่ได้"
     // at the end of a flash-card round). On completion, control returns
     // to the cards screen with those same words queued as the next round.
-    reviewLearn: null
+    reviewLearn: null,
+    // "dictation" screen: true = daily kanji-reading review (DictationDaily
+    // pool), false = the current deck's ฟังเขียน drill. Set before navigating.
+    dictDaily: false
   };
 
   /* ---------- utils ---------- */
@@ -92,12 +95,33 @@ window.FlashcardsView = (function () {
     else if (state.screen === "reviewLearn") root.appendChild(renderReviewLearn());
     else if (state.screen === "dailyCards") root.appendChild(renderDailyCards());
     else if (state.screen === "dailyLearn") root.appendChild(renderDailyLearn());
+    else if (state.screen === "dictation") root.appendChild(renderDictation());
     return root;
   }
   function refresh(container) {
     const fresh = render();
     container.replaceWith(fresh);
     return fresh;
+  }
+
+  /* ---------- dictation (ฟังเขียน) host ----------
+   * The drill itself lives in DictationView; we just mount its session node
+   * and supply an onExit that returns to wherever the user launched it from
+   * (the deck detail for a deck drill, home for the daily review).
+   */
+  function renderDictation() {
+    const wrap = document.createElement("div");
+    const onExit = () => {
+      const daily = state.dictDaily;
+      state.dictDaily = false;
+      state.screen = daily ? "home" : "deck";
+      refresh(wrap);
+    };
+    const node = state.dictDaily
+      ? window.DictationView.renderDailySession(onExit)
+      : window.DictationView.renderDeckSession(state.deckId, onExit);
+    wrap.appendChild(node);
+    return wrap;
   }
 
   /* ---------- daily-words panel ----------
@@ -618,11 +642,20 @@ window.FlashcardsView = (function () {
       </div>
       <p class="subtle">${folder ? "ชุดคำในโฟลเดอร์นี้" : "โฟลเดอร์และชุดคำที่ยังไม่จัดเข้าโฟลเดอร์"}</p>
       <div id="fc-daily-slot"></div>
+      <div id="fc-dict-daily-slot"></div>
       <div id="fc-streak-slot"></div>
       <div id="fc-body"></div>
     `;
     if (!state.folderId) {
       root.querySelector("#fc-daily-slot").appendChild(renderDailyPanel(root));
+      if (window.DictationView && window.DictationDaily) {
+        root.querySelector("#fc-dict-daily-slot").appendChild(
+          window.DictationView.renderDailyReviewCard({
+            onRefresh: () => refresh(root),
+            onStart: () => { state.dictDaily = true; state.screen = "dictation"; refresh(root); }
+          })
+        );
+      }
       root.querySelector("#fc-streak-slot").appendChild(renderStreakPanel());
     }
     const body = root.querySelector("#fc-body");
@@ -789,6 +822,15 @@ window.FlashcardsView = (function () {
       const resetLearnDisabled = doneInPool === 0 && learnInFlight === 0;
       const resetLearnAllDisabled = learnAllDone === 0 && learnAttempts === 0 && learnInFlight === 0;
 
+      // ฟังเขียน mode: drill-able words in the current chunk + how many answered.
+      const dictStats = window.DictationView
+        ? window.DictationView.deckStats(deck)
+        : { eligible: 0, done: 0, allDone: false };
+      const pctD = dictStats.eligible ? Math.round((dictStats.done / dictStats.eligible) * 100) : 0;
+      const dictLabel = dictStats.done === 0
+        ? "เริ่ม"
+        : dictStats.allDone ? "ทบทวนอีกครั้ง" : "ทำต่อ";
+
       const chunkOpts = [25, 50, 100].map((n) =>
         `<option value="${n}" ${deck.chunkSize === n ? "selected" : ""}>${n} คำ/ชุด</option>`
       ).join("");
@@ -871,6 +913,18 @@ window.FlashcardsView = (function () {
               <button class="btn primary" id="goLearn">${learnInFlight > 0 || (doneInPool > 0 && doneInPool < poolSize) ? "ทำต่อ" : "เริ่ม"}</button>
               <button class="btn ghost" id="resetLearn" ${resetLearnDisabled ? "disabled" : ""}>${isChunked ? "รีเซ็ตชุดย่อย" : "รีเซ็ต"}</button>
               ${isChunked ? `<button class="btn ghost" id="resetLearnAll" ${resetLearnAllDisabled ? "disabled" : ""}>รีเซ็ตทั้งหมด</button>` : ""}
+            </div>
+          </div>
+          <hr style="border:none; border-top:1px solid var(--line); margin:14px 0;" />
+          <div class="fc-mode-row">
+            <div class="fc-mode-meta">
+              <div class="fc-mode-title">🎧 ฟังเขียน</div>
+              <div class="qprog">${dictStats.done} / ${dictStats.eligible} คำที่ฝึกได้</div>
+              <div class="progress ${dictStats.allDone ? "ok" : ""}"><div class="bar" style="width:${pctD}%"></div></div>
+            </div>
+            <div class="btn-row" style="margin:0;">
+              <button class="btn primary" id="goDictation" ${dictStats.eligible === 0 ? "disabled" : ""}>${dictLabel}</button>
+              <button class="btn ghost" id="resetDictation" ${dictStats.done === 0 ? "disabled" : ""}>รีเซ็ต</button>
             </div>
           </div>
         </div>
@@ -1053,6 +1107,20 @@ window.FlashcardsView = (function () {
       if (resetLearnAllBtn) resetLearnAllBtn.addEventListener("click", () => {
         if (confirm("รีเซ็ตความคืบหน้า Learn ของชุดคำนี้ทั้งหมด (ทุกชุดย่อย รวมตัวนับด้วย)?")) {
           FS().clearProgress(deck.id, "learn"); draw();
+        }
+      });
+
+      root.querySelector("#goDictation").addEventListener("click", () => {
+        const stats = window.DictationView.deckStats(FS().getDeck(deck.id));
+        if (stats.eligible === 0) return alert("ไม่มีคำที่ฝึกฟังเขียนได้ในชุดย่อยนี้");
+        // A finished drill restarts from scratch; a partial one resumes.
+        if (stats.allDone) FS().clearProgress(deck.id, "dictation");
+        state.dictDaily = false; state.screen = "dictation"; refresh(root);
+      });
+      const resetDictBtn = root.querySelector("#resetDictation");
+      if (resetDictBtn) resetDictBtn.addEventListener("click", () => {
+        if (confirm("รีเซ็ตความคืบหน้าฟังเขียนของชุดคำนี้?")) {
+          FS().clearProgress(deck.id, "dictation"); draw();
         }
       });
 
