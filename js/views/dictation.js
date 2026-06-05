@@ -676,6 +676,13 @@ window.DictationView = (function () {
         const slot = root.querySelector("#kbSlot");
         if (slot) slot.appendChild(window.KanaKeypad.create(input));
       }
+      // With the hint open the user taps a choice instead of typing, so hide the
+      // on-screen keypad to reclaim the space.
+      function updateKeypad() {
+        const kb = root.querySelector("#kbSlot");
+        if (kb) kb.style.display = hintOpen ? "none" : "";
+      }
+      updateKeypad();
       // When the hint is open the user answers by tapping a choice, so don't
       // steal focus (which would pop the on-screen keyboard).
       if (!hintOpen) input.focus();
@@ -881,6 +888,7 @@ window.DictationView = (function () {
           hintOpen = !hintOpen;
           hintBtn.classList.toggle("primary", hintOpen);
           hintBtn.classList.toggle("ghost", !hintOpen);
+          updateKeypad();
           renderHint();
         });
       }
