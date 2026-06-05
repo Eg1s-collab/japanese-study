@@ -62,6 +62,11 @@ window.FlashcardsStorage = (function () {
     if (typeof d.progress.learn.roundTotal !== "number") d.progress.learn.roundTotal = 0;
     if (typeof d.progress.learn.attempts !== "number") d.progress.learn.attempts = 0;
     if (typeof d.progress.learn.correct !== "number") d.progress.learn.correct = 0;
+    // Dictation (ฟังเขียน) progress: words answered correctly in a deck drill,
+    // so leaving mid-deck and returning resumes with the remaining words and
+    // the home screen can show a progress bar (like flashcards cards/learn).
+    if (!d.progress.dictation || typeof d.progress.dictation !== "object") d.progress.dictation = {};
+    if (!Array.isArray(d.progress.dictation.doneIds)) d.progress.dictation.doneIds = [];
     return d;
   }
 
@@ -434,6 +439,16 @@ window.FlashcardsStorage = (function () {
       if (window.FlashcardsStreak) window.FlashcardsStreak.addCards(added);
     }
   }
+  function markDictationDone(deckId, wordId) {
+    const state = load();
+    const d = state.decks.find((x) => x.id === deckId);
+    if (!d) return;
+    ensureDeckShape(d);
+    if (!d.progress.dictation.doneIds.includes(wordId)) {
+      d.progress.dictation.doneIds.push(wordId);
+      commitDeck(state, d);
+    }
+  }
   function clearProgress(deckId, mode) {
     const state = load();
     const d = state.decks.find((x) => x.id === deckId);
@@ -444,6 +459,9 @@ window.FlashcardsStorage = (function () {
     }
     if (mode === "learn" || mode === "all") {
       d.progress.learn = { completedIds: [], queueIds: [], wrongIds: [], roundTotal: 0, attempts: 0, correct: 0 };
+    }
+    if (mode === "dictation" || mode === "all") {
+      d.progress.dictation = { doneIds: [] };
     }
     commitDeck(state, d);
   }
@@ -473,6 +491,9 @@ window.FlashcardsStorage = (function () {
       if (!d.progress.learn.queueIds.length && !d.progress.learn.wrongIds.length) {
         d.progress.learn.roundTotal = 0;
       }
+    }
+    if (mode === "dictation" || mode === "all") {
+      d.progress.dictation.doneIds = d.progress.dictation.doneIds.filter((id) => !idSet.has(id));
     }
     commitDeck(state, d);
   }
@@ -603,7 +624,7 @@ window.FlashcardsStorage = (function () {
     createDeck, renameDeck, moveDeck, deleteDeck,
     addWord, updateWord, deleteWord, toggleStar,
     setChunkSize, setSelectedChunk, setSelectedChunks, chunkCount, chunkWords, chunkRange, selectedChunkIndices,
-    markCardSeen, markCardUnknown, unmarkCardSeen, recordLearnAttempt, markLearnCompleted, clearProgress, clearProgressForWords,
+    markCardSeen, markCardUnknown, unmarkCardSeen, recordLearnAttempt, markLearnCompleted, markDictationDone, clearProgress, clearProgressForWords,
     setCardsRound, setLearnRound,
     parseCSV, importCSV,
     getDeck, getFolder,

@@ -50,6 +50,13 @@ window.DictationView = (function () {
     return a;
   }
 
+  // Words answered correctly in this deck's dictation drill (persisted via
+  // FlashcardsStorage, synced like the rest of the deck's progress).
+  function deckDoneSet(deck) {
+    const p = deck && deck.progress && deck.progress.dictation;
+    return new Set((p && p.doneIds) || []);
+  }
+
   // Pull readings out of a front like "会う(あう)" → ["あう"], or
   // "明日(あした, あす)" → ["あした", "あす"]. If the front has no parens
   // but is purely kana (e.g. "あした"), the front itself is the reading.
@@ -551,7 +558,8 @@ window.DictationView = (function () {
       decks.className = "unit-list";
       decks.style.marginTop = (state.folderId ? "0" : "14px");
       visibleDecks.forEach((d) => {
-        const eligible = eligibleWords(d).length;
+        const eligList = eligibleWords(d);
+        const eligible = eligList.length;
         const totalChunk = FS().chunkWords(d).length;
         const card = document.createElement("div");
         card.className = "card unit-card" + (eligible === 0 ? " dim" : "");
@@ -561,12 +569,26 @@ window.DictationView = (function () {
         const chunkLabel = d.chunkSize
           ? `แบ่ง ${d.chunkSize} · เลือก ${FS().selectedChunkIndices(d).length}/${FS().chunkCount(d)} ชุด`
           : "ทั้งหมด";
+        // Progress = correctly-answered words within the currently eligible set.
+        const doneSet = deckDoneSet(d);
+        const doneCount = eligList.reduce((n, w) => n + (doneSet.has(w.id) ? 1 : 0), 0);
+        const remaining = eligible - doneCount;
+        const pct = eligible ? Math.round((doneCount / eligible) * 100) : 0;
+        const allDone = eligible > 0 && doneCount >= eligible;
+        const startLabel = doneCount === 0
+          ? "เริ่ม"
+          : allDone ? "ทบทวนอีกครั้ง" : `ทำต่อ (เหลือ ${remaining})`;
         card.innerHTML = `
           <div class="badge">${badgeIcon} ${eligible} / ${totalChunk} ${badgeWord}</div>
           <h3>${escapeHtml(d.name)}</h3>
           <p class="subtle">${chunkLabel} · ${d.words.length} คำในชุด</p>
+          ${eligible ? `
+            <div class="qprog" style="margin-top:6px;">ทำแล้ว ${doneCount}/${eligible} คำ${allDone ? " · ครบแล้ว ✓" : ""}</div>
+            <div class="progress ${allDone ? "ok" : ""}"><div class="bar" style="width:${pct}%"></div></div>
+          ` : ""}
           <div class="btn-row">
-            <button class="btn primary" data-start ${eligible === 0 ? "disabled" : ""}>เริ่ม</button>
+            <button class="btn primary" data-start ${eligible === 0 ? "disabled" : ""}>${startLabel}</button>
+            ${doneCount > 0 ? `<button class="btn ghost" data-reset title="ล้างความก้าวหน้าของชุดนี้">↻ เริ่มใหม่</button>` : ""}
             <button class="btn ghost" data-chunks aria-expanded="${expanded}">⚙ ชุดย่อย${expanded ? " ▲" : " ▼"}</button>
           </div>
           <div class="dict-chunk-panel" data-chunk-panel ${expanded ? "" : "hidden"}></div>
@@ -574,8 +596,17 @@ window.DictationView = (function () {
         card.querySelector("[data-start]").addEventListener("click", (e) => {
           e.stopPropagation();
           if (eligible === 0) return;
+          // Finished decks restart from scratch; partial decks resume the rest.
+          if (allDone) FS().clearProgress(d.id, "dictation");
           state.screen = "session"; state.deckId = d.id; state.daily = false;
           state.showChars = true;  // show the kanji by default; toggle to listen-only
+          refresh(root);
+        });
+        const resetBtn = card.querySelector("[data-reset]");
+        if (resetBtn) resetBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (!confirm("ล้างความก้าวหน้าฟังเขียนของชุดนี้?")) return;
+          FS().clearProgress(d.id, "dictation");
           refresh(root);
         });
         card.querySelector("[data-chunks]").addEventListener("click", (e) => {
@@ -617,6 +648,13 @@ window.DictationView = (function () {
 
     function buildPool() {
       let p = state.daily ? dailyReadWords() : eligibleWords(deck);
+      // Deck mode: skip words already answered correctly so the user resumes
+      // with the remaining items. Re-read from storage each call so a reset
+      // (clearProgress) before "เริ่มรอบใหม่" yields the full set again.
+      if (!state.daily && deck) {
+        const done = deckDoneSet(FS().getDeck(deck.id));
+        p = p.filter((w) => !done.has(w.id));
+      }
       if (state.starredOnly) p = p.filter((w) => w.starred);
       if (state.shuffle) p = shuffleArr(p);
       return p;
@@ -763,6 +801,9 @@ window.DictationView = (function () {
           draw();
         });
         root.querySelector("#restart").addEventListener("click", () => {
+          // Clear saved progress so the new round covers the whole deck again
+          // (buildPool excludes already-done words).
+          if (!state.daily && deck) FS().clearProgress(deck.id, "dictation");
           pool = buildPool();
           batchStart = 0; correctCount = 0; wrongCount = 0; answered = false;
           wrongIds.length = 0;
@@ -874,6 +915,9 @@ window.DictationView = (function () {
         if (ok) {
           correctCount++;
           batchMastered.add(w.id);
+          // Deck mode persists correct answers so progress survives leaving the
+          // session (daily mode is handled by recordDaily above).
+          if (!state.daily && deck) FS().markDictationDone(deck.id, w.id);
           fb.innerHTML = `
             <div class="feedback ok">
               <strong>ถูกต้อง ✓</strong>
