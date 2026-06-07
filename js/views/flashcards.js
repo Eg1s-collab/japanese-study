@@ -2485,17 +2485,18 @@ window.FlashcardsView = (function () {
       }
       if (queue.length === 0) {
         const allUnknown = doneUnknown;
+        const pct = total ? Math.round((donePassed / total) * 100) : 0;
         root.innerHTML = `
           ${renderHeader()}
           ${renderToolbar()}
           <div class="qprog">เสร็จแล้ว: ${donePassed + doneUnknown} / ${total} (ผ่าน ${donePassed} · ยังไม่ได้ ${allUnknown})</div>
-          <div class="progress ok"><div class="bar" style="width:100%"></div></div>
+          <div class="progress ${allUnknown === 0 ? "ok" : ""}"><div class="bar" style="width:${pct}%"></div></div>
           <div class="score-card">
             <div>
               <h2 style="margin:0;">จบ Flash Card วันนี้แล้ว</h2>
-              <p class="subtle">${allUnknown > 0 ? `ยังต้อง Learn อีก ${allUnknown} คำ` : "ครบทุกคำเลย เก่งมาก!"}</p>
+              <p class="subtle">ความถูกต้อง ${donePassed}/${total} (${pct}%)${allUnknown > 0 ? ` · ยังต้อง Learn อีก ${allUnknown} คำ` : " · ครบทุกคำเลย เก่งมาก!"}</p>
             </div>
-            <div class="score-num">${allUnknown > 0 ? allUnknown : "✓"}</div>
+            <div class="score-num">${allUnknown > 0 ? pct + "%" : "✓"}</div>
           </div>
           <div class="btn-row">
             ${allUnknown > 0 ? `<button class="btn primary" id="goLearnNow">ไปทำ Learn ต่อ →</button>` : ""}
