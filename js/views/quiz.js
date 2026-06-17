@@ -353,7 +353,9 @@ window.QuizView = (function () {
           <div id="kbSlot"></div>
           <div class="btn-row">
             <button class="btn primary" id="submitBtn">ตรวจคำตอบ</button>
+            ${stored ? "" : `<button class="btn ghost" id="choicesBtn">โชว์ตัวเลือกคำตอบ</button>`}
           </div>
+          <div id="choiceHints" class="choice-hints" hidden></div>
         `;
       }
 
@@ -443,6 +445,27 @@ window.QuizView = (function () {
           input.addEventListener("keydown", (e) => {
             if (e.key === "Enter") submit();
           });
+          const choicesBtn = root.querySelector("#choicesBtn");
+          const choiceHints = root.querySelector("#choiceHints");
+          if (choicesBtn && choiceHints) {
+            choicesBtn.addEventListener("click", () => {
+              if (!choiceHints.dataset.built) {
+                const opts = buildFillChoices(level, q);
+                choiceHints.innerHTML = opts
+                  .map((o) => `<button type="button" class="choice-chip">${escapeHtml(o)}</button>`)
+                  .join("");
+                choiceHints.querySelectorAll(".choice-chip").forEach((chip) => {
+                  chip.addEventListener("click", () => {
+                    input.value = chip.textContent;
+                    input.focus();
+                  });
+                });
+                choiceHints.dataset.built = "1";
+              }
+              choiceHints.hidden = !choiceHints.hidden;
+              choicesBtn.textContent = choiceHints.hidden ? "โชว์ตัวเลือกคำตอบ" : "ซ่อนตัวเลือก";
+            });
+          }
         }
       }
     }
@@ -495,6 +518,37 @@ window.QuizView = (function () {
 
   function normalize(s) {
     return String(s || "").trim().replace(/\s+/g, "");
+  }
+
+  function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  // สร้างตัวเลือกแบบหลายตัวเลือกสำหรับข้อพิมพ์: คำตอบที่ถูก + ตัวลวง
+  // ใช้ q.choices ถ้ามี ไม่งั้นดึงคำตอบของข้อพิมพ์อื่นในระดับเดียวกันมาเป็นตัวลวง
+  function buildFillChoices(level, q) {
+    if (Array.isArray(q.choices) && q.choices.length) return shuffle(q.choices.slice());
+    const answers = Array.isArray(q.answer) ? q.answer : [q.answer];
+    const correct = answers[0];
+    const acceptedSet = new Set(answers.map(normalize));
+    const lv = window.LEVELS[level];
+    const pool = [];
+    const seen = new Set();
+    (lv ? lv.units : []).forEach((u) => {
+      (u.quiz || []).forEach((qq) => {
+        if (qq === q || qq.type !== "fill") return;
+        const cand = Array.isArray(qq.answer) ? qq.answer[0] : qq.answer;
+        const n = normalize(cand);
+        if (!cand || acceptedSet.has(n) || seen.has(n)) return;
+        seen.add(n);
+        pool.push(cand);
+      });
+    });
+    return shuffle([correct, ...shuffle(pool).slice(0, 3)]);
   }
 
   function escapeHtml(s) {

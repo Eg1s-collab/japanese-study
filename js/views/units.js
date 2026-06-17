@@ -78,6 +78,7 @@ window.UnitsView = (function () {
         <button class="btn ghost" id="backBtn">← กลับไปรายการ</button>
         <button class="btn primary" id="quizBtn">เริ่มทำแบบฝึกหัดของ unit นี้</button>
         ${playlistUrl ? `<a class="btn ghost video-btn" href="${escapeAttr(playlistUrl)}" target="_blank" rel="noopener">▶ ดู Playlist ทั้งหมด</a>` : ""}
+        ${LP && !dismissed ? `<button class="btn ghost" id="hideBtn">✓ ซ่อนบทนี้</button>` : ""}
         ${dismissed ? `<button class="btn ghost" id="unhideBtn">↺ ยกเลิกการซ่อน</button>` : ""}
       </div>
       <div class="card">
@@ -89,6 +90,13 @@ window.UnitsView = (function () {
     `;
     root.querySelector("#backBtn").addEventListener("click", onBack);
     root.querySelector("#quizBtn").addEventListener("click", () => onStartQuiz(unit.id));
+    const hideBtn = root.querySelector("#hideBtn");
+    if (hideBtn) {
+      hideBtn.addEventListener("click", () => {
+        LP.setDismissed(level, unit.id, true);
+        onBack();
+      });
+    }
     const unhideBtn = root.querySelector("#unhideBtn");
     if (unhideBtn) {
       unhideBtn.addEventListener("click", () => {
