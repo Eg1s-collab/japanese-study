@@ -2265,6 +2265,134 @@ h3 { margin: 0 0 6px; font-size: 16px; }
 .mm-point:hover { color: var(--accent-strong); border-style: solid; }
 .mm-empty { font-size: 13px; color: var(--muted); padding: 6px 4px; }
 
+/* ติ๊ก "จำได้แล้ว" บนหัวข้อในแผนผัง */
+.mm-leaf { display: inline-flex; align-items: center; gap: 6px; }
+.mm-check {
+  flex: 0 0 auto; width: 22px; height: 22px; padding: 0;
+  display: grid; place-items: center; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 7px;
+  background: var(--glass-bg); color: transparent;
+  font-size: 13px; line-height: 1;
+  transition: background .14s ease, border-color .14s ease, color .14s ease, transform .08s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.mm-check:hover { border-color: var(--accent); color: var(--muted); }
+.mm-check:active { transform: translateY(1px); }
+.mm-check[aria-checked="true"] {
+  background: var(--accent-soft); border-color: var(--accent);
+  color: var(--accent-strong);
+}
+.mm-check-mark { font-weight: 800; }
+.mm-leaf.is-known .mm-point {
+  color: var(--muted); border-style: solid; opacity: .72;
+  text-decoration: line-through; text-decoration-thickness: 1px;
+}
+.mm-known-badge {
+  font-size: 10.5px; font-weight: 700; color: var(--accent-strong);
+  background: var(--accent-soft); border: 1px solid var(--accent);
+  border-radius: 999px; padding: 1px 7px; margin-left: 2px;
+}
+.mm-node.is-all-known > .mm-label .mm-known-badge {
+  color: #fff; background: var(--accent); border-color: var(--accent);
+}
+
+/* หัวข้อที่กำลังกางเนื้อหาในแผนผัง */
+.mm-point.mm-open {
+  color: var(--accent-strong); border-style: solid;
+  background: var(--accent-soft); border-color: var(--accent);
+}
+/* การ์ดเนื้อหาที่กางใต้หัวข้อ — block เต็มแถวของกลุ่ม */
+.mm-leaf-detail {
+  display: block; width: 100%; box-sizing: border-box;
+  margin: 6px 0 10px; padding: 13px 15px;
+  border: 1px solid var(--accent); border-radius: 13px;
+  background: var(--glass-bg-strong);
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
+  animation: mmDetailIn .16s ease;
+}
+@keyframes mmDetailIn {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: none; }
+}
+.mm-detail-head {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.mm-detail-pat {
+  font-size: 14.5px; font-weight: 800; color: var(--accent-strong);
+  flex: 1 1 auto; min-width: 0;
+}
+.mm-detail-head .gs-open-unit { flex: 0 0 auto; }
+.mm-leaf-detail .desc { font-size: 13.5px; line-height: 1.6; color: var(--ink); }
+.mm-detail-empty { font-size: 13px; color: var(--muted); }
+.mm-leaf-detail .gs-conn {
+  margin-top: 12px; padding-top: 11px;
+  border-top: 1px dashed var(--line);
+}
+
+.mm-detail-actions {
+  margin-top: 12px; padding-top: 11px;
+  border-top: 1px dashed var(--line);
+}
+
+/* ข้อสอบตามหัวข้อในแผนผัง */
+.mm-quiz {
+  margin-top: 12px; padding-top: 11px;
+  border-top: 1px dashed var(--line);
+}
+/* แถบหัว = ปุ่มซ่อน/แสดง */
+.mm-quiz-toggle {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 11px; border-radius: 10px;
+  background: var(--surface-2, rgba(127,127,127,0.06));
+  border: 1px solid var(--line); cursor: pointer;
+  font-weight: 700; font-size: 0.92rem; color: var(--text);
+  text-align: left; transition: background 0.15s ease;
+}
+.mm-quiz-toggle:hover { background: var(--surface-3, rgba(127,127,127,0.12)); }
+.mm-quiz-caret {
+  font-size: 0.8rem; color: var(--accent);
+  transition: transform 0.18s ease; flex: none;
+}
+.mm-quiz.collapsed .mm-quiz-caret { transform: rotate(-90deg); }
+.mm-quiz-ico {
+  font-size: 0.9rem; color: var(--accent); flex: none;
+}
+.mm-quiz-title { flex: 1; min-width: 0; }
+.mm-quiz-n {
+  font-size: 0.74rem; font-weight: 600; flex: none;
+  padding: 1px 8px; border-radius: 999px;
+  background: var(--accent-soft, rgba(127,127,127,0.14)); color: var(--accent);
+}
+.mm-quiz-body { margin-top: 11px; }
+.mm-quiz.collapsed .mm-quiz-body { display: none; }
+.mm-quiz-list { display: flex; flex-direction: column; gap: 12px; }
+.mm-quiz-item {
+  padding: 11px 12px; border-radius: 12px;
+  background: var(--surface-2, rgba(127,127,127,0.06));
+  border: 1px solid var(--line);
+}
+.mm-quiz-q { font-size: 0.95rem; line-height: 1.5; margin-bottom: 9px; }
+.mm-quiz-choices { display: flex; flex-direction: column; gap: 7px; }
+.mm-quiz-choices .mm-choice { width: 100%; text-align: left; }
+.mm-quiz-fill { display: flex; gap: 8px; align-items: center; }
+.mm-quiz-fill .mm-fill { flex: 1; min-width: 0; }
+.mm-quiz-fill .mm-fill.correct { border-color: var(--ok, #2e9e6b); }
+.mm-quiz-fill .mm-fill.wrong { border-color: var(--bad, #d2544a); }
+.mm-quiz-fb {
+  margin-top: 9px; padding: 8px 10px; border-radius: 9px;
+  font-size: 0.85rem; line-height: 1.45;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.mm-quiz-fb.ok { background: rgba(46,158,107,0.13); color: var(--ok, #2e9e6b); }
+.mm-quiz-fb.bad { background: rgba(210,84,74,0.13); color: var(--bad, #d2544a); }
+.mm-quiz-fb-mark { font-weight: 700; }
+.mm-quiz-fb-ex { color: var(--text); opacity: 0.85; }
+.mm-quiz-empty {
+  font-size: 0.86rem; color: var(--muted); padding: 6px 0;
+}
+.mm-quiz-foot { margin-top: 11px; }
+
 @media (max-width: 540px) {
   .gs-map-hint { margin-left: 0; flex-basis: 100%; }
   .mm-children { margin-left: 14px; padding-left: 14px; }

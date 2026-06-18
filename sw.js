@@ -12,7 +12,7 @@
  * the network untouched, or cloud sync breaks. We only ever call
  * respondWith() for same-origin GETs.
  */
-const CACHE = "nihongo-v20260604g";
+const CACHE = "nihongo-v20260618f";
 const SHELL = ["./", "./index.html", "./manifest.json", "./icons/icon-192.png"];
 
 self.addEventListener("install", (e) => {

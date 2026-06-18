@@ -115,7 +115,7 @@ window.GrammarSummaryView = (function () {
     try { localStorage.setItem(MAP_GROUP_KEY, g); } catch (_) {}
   }
 
-  function render(level, onOpenUnit) {
+  function render(level, onOpenUnit, onOpenQuiz) {
     const lv = window.LEVELS[level];
     const root = document.createElement("div");
     if (!lv) {
@@ -207,7 +207,7 @@ window.GrammarSummaryView = (function () {
           <button class="gs-grp-btn ${mapGroup === "level" ? "on" : ""}" data-group="level" type="button">ตามระดับ</button>
           <button class="gs-grp-btn ${mapGroup === "form" ? "on" : ""}" data-group="form" type="button">ตามรูปคำ</button>
         </span>
-        <span class="gs-map-hint">แตะหมวดเพื่อกางหัวข้อ · แตะหัวข้อเพื่อไปบทเรียน</span>
+        <span class="gs-map-hint">แตะหมวดเพื่อกางหัวข้อ · แตะหัวข้อเพื่อดูเนื้อหา · ติ๊ก ✓ เมื่อจำได้แล้ว</span>
       </div>
 
       <div class="gs-sections" id="gsGroups"></div>
@@ -227,6 +227,7 @@ window.GrammarSummaryView = (function () {
         const html = mapGroup === "form" ? mapByFormHtml(mapLevels) : mapHtml(mapLevels);
         groups.innerHTML = html || `<div class='empty'>เลือกอย่างน้อยหนึ่งระดับ</div>`;
         applyMapSearch();
+        updateKnownCounts();
         return;
       }
       if (mode === "cat" && hasCats) {
@@ -262,6 +263,9 @@ window.GrammarSummaryView = (function () {
     function applyMapSearch() {
       const tree = groups.querySelector(".mm-tree");
       if (!tree) { noResult.hidden = true; return; }
+      // ปิดเนื้อหาที่กางค้างไว้ ก่อนกรองด้วยคำค้น
+      tree.querySelectorAll(".mm-leaf-detail").forEach((d) => d.remove());
+      tree.querySelectorAll(".gs-map-open.mm-open").forEach((b) => b.classList.remove("mm-open"));
       const q = search.value.trim().toLowerCase();
       if (!q) {
         tree.querySelectorAll(".mm-leaf").forEach((l) => { l.hidden = false; });
@@ -291,6 +295,76 @@ window.GrammarSummaryView = (function () {
         if (vis) node.classList.remove("collapsed");
       });
       noResult.hidden = any;
+    }
+
+    /* แผนผัง: อัปเดตป้ายนับ "จำได้แล้ว" บนแต่ละโหนด (✓ x/N) */
+    function updateKnownCounts() {
+      const tree = groups.querySelector(".mm-tree");
+      if (!tree) return;
+      tree.querySelectorAll(".mm-cat-node, .mm-level-node, .mm-root-node").forEach((node) => {
+        const leaves = node.querySelectorAll(".mm-leaf");
+        if (!leaves.length) return;
+        const known = node.querySelectorAll(".mm-leaf.is-known").length;
+        node.classList.toggle("is-all-known", known === leaves.length);
+        const label = node.querySelector(":scope > .mm-label");
+        if (!label) return;
+        let badge = label.querySelector(".mm-known-badge");
+        if (!known) { if (badge) badge.remove(); return; }
+        if (!badge) {
+          badge = document.createElement("span");
+          badge.className = "mm-known-badge";
+          label.appendChild(badge);
+        }
+        badge.textContent = "✓ " + known + "/" + leaves.length;
+      });
+    }
+
+    /* กางการ์ดเนื้อหาใต้ใบหัวข้อในแผนผัง (toggle=true → กดซ้ำเพื่อยุบ) */
+    function expandLeafDetail(mapOpen, toggle) {
+      const leaf = mapOpen.closest(".mm-leaf");
+      if (!leaf) return null;
+      const uid = mapOpen.dataset.target;
+      const next = leaf.nextElementSibling;
+      const isOpen = next && next.classList.contains("mm-leaf-detail") && next.dataset.for === uid;
+      if (isOpen) {
+        if (toggle) { next.remove(); mapOpen.classList.remove("mm-open"); }
+        return isOpen ? next : null;
+      }
+      // ปิดเนื้อหาที่เปิดค้างอยู่ในกลุ่มเดียวกันก่อน (กางทีละหัวข้อ)
+      const container = leaf.parentElement;
+      container.querySelectorAll(":scope > .mm-leaf-detail").forEach((d) => {
+        const prev = d.previousElementSibling;
+        if (prev) { const b = prev.querySelector(".gs-map-open"); if (b) b.classList.remove("mm-open"); }
+        d.remove();
+      });
+      const div = document.createElement("div");
+      div.className = "mm-leaf-detail";
+      div.dataset.for = uid;
+      div.innerHTML = mapDetailHtml(uid);
+      leaf.after(div);
+      mapOpen.classList.add("mm-open");
+      return div;
+    }
+
+    /* เปิดหัวข้อที่เกี่ยวข้องในแผนผัง — กางบรรพบุรุษ เลื่อนไปหา แล้วกางเนื้อหา */
+    function openMapDetail(uid) {
+      const btn = groups.querySelector('.mm-point[data-target="' + cssEscape(uid) + '"]');
+      if (!btn) {
+        // ไม่อยู่ในแผนผังที่เลือก (เช่น ปิดระดับนั้นไว้) → เปิดบทเรียนแทน
+        const r = findPoint(uid);
+        if (r && typeof onOpenUnit === "function") onOpenUnit(r.unit.id);
+        return;
+      }
+      // เคลียร์คำค้นถ้าใบถูกซ่อนอยู่
+      const leaf = btn.closest(".mm-leaf");
+      if (leaf && leaf.hidden) { search.value = ""; applyMapSearch(); }
+      // กระโดดไปหัวข้อใหม่ → ปิดการ์ดที่กางค้างอยู่ทั้งหมดก่อน
+      groups.querySelectorAll(".mm-leaf-detail").forEach((d) => d.remove());
+      groups.querySelectorAll(".mm-point.mm-open").forEach((b) => b.classList.remove("mm-open"));
+      let p = leaf ? leaf.parentElement : null;
+      while (p) { if (p.classList && p.classList.contains("mm-node")) p.classList.remove("collapsed"); p = p.parentElement; }
+      const div = expandLeafDetail(btn, false);
+      (div || leaf || btn).scrollIntoView({ behavior: "smooth", block: "center" });
     }
 
     function jumpTo(uid) {
@@ -338,9 +412,81 @@ window.GrammarSummaryView = (function () {
         return;
       }
 
-      // แผนผัง: แตะหัวข้อ → ไปบทเรียนนั้น
+      // แผนผัง: ติ๊กว่าจำหัวข้อนี้ได้แล้ว
+      const checkBtn = e.target.closest(".mm-check");
+      if (checkBtn) {
+        e.preventDefault();
+        if (window.GrammarKnown) {
+          const uid = checkBtn.dataset.known;
+          const now = window.GrammarKnown.toggle(uid);
+          checkBtn.setAttribute("aria-checked", now ? "true" : "false");
+          const leaf = checkBtn.closest(".mm-leaf");
+          if (leaf) leaf.classList.toggle("is-known", now);
+          updateKnownCounts();
+        }
+        return;
+      }
+
+      // แผนผัง: กดหัวข้อแบบฝึกหัด → ซ่อน/แสดงรายการคำถาม
+      const quizToggle = e.target.closest(".mm-quiz-toggle");
+      if (quizToggle) {
+        e.preventDefault();
+        const box = quizToggle.closest(".mm-quiz");
+        if (box) {
+          const collapsed = box.classList.toggle("collapsed");
+          quizToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+        }
+        return;
+      }
+
+      // แผนผัง: ตอบข้อสอบ MCQ ในการ์ดเนื้อหา
+      const choice = e.target.closest(".mm-choice");
+      if (choice) {
+        e.preventDefault();
+        const item = choice.closest(".mm-quiz-item");
+        if (!item || item.classList.contains("answered")) return;
+        item.classList.add("answered");
+        const ok = choice.dataset.correct === "1";
+        item.querySelectorAll(".mm-choice").forEach((b) => {
+          b.classList.add("disabled");
+          if (b.dataset.correct === "1") b.classList.add("correct");
+        });
+        if (!ok) choice.classList.add("wrong");
+        showMapFeedback(item, ok);
+        return;
+      }
+
+      // แผนผัง: ตรวจคำตอบข้อเติมคำ
+      const fillCheck = e.target.closest(".mm-fill-check");
+      if (fillCheck) {
+        e.preventDefault();
+        const item = fillCheck.closest(".mm-quiz-item");
+        const input = item && item.querySelector(".mm-fill");
+        if (!input) return;
+        let answers = [];
+        try { answers = JSON.parse(input.dataset.answers || "[]"); } catch (_) {}
+        const norm = (s) => String(s == null ? "" : s).trim().replace(/\s+/g, "");
+        const got = norm(input.value);
+        const ok = answers.some((a) => norm(a) === got) && got !== "";
+        item.classList.toggle("answered", ok);
+        input.classList.toggle("correct", ok);
+        input.classList.toggle("wrong", !ok);
+        showMapFeedback(item, ok);
+        return;
+      }
+
+      // แผนผัง: เปิดแบบฝึกหัดทั้งบท
+      const openQuiz = e.target.closest(".gs-open-quiz");
+      if (openQuiz) {
+        e.preventDefault();
+        if (typeof onOpenQuiz === "function") onOpenQuiz(openQuiz.dataset.unit);
+        else if (typeof onOpenUnit === "function") onOpenUnit(openQuiz.dataset.unit);
+        return;
+      }
+
+      // แผนผัง: แตะหัวข้อ → กางเนื้อหาหัวข้อนั้นในแผนผัง
       const mapOpen = e.target.closest(".gs-map-open");
-      if (mapOpen) { e.preventDefault(); if (typeof onOpenUnit === "function") onOpenUnit(mapOpen.dataset.unit); return; }
+      if (mapOpen) { e.preventDefault(); expandLeafDetail(mapOpen, true); return; }
 
       // แผนผัง: แตะหมวด/ระดับ → กาง/ยุบกิ่ง
       const toggleLabel = e.target.closest(".mm-label[data-toggle]");
@@ -354,7 +500,13 @@ window.GrammarSummaryView = (function () {
       if (openBtn) { e.preventDefault(); if (typeof onOpenUnit === "function") onOpenUnit(openBtn.dataset.unit); return; }
 
       const jump = e.target.closest(".gs-jump");
-      if (jump) { e.preventDefault(); jumpTo(jump.dataset.target); return; }
+      if (jump) {
+        e.preventDefault();
+        // ในแผนผัง (หรือกดจากการ์ดเนื้อหาในแผนผัง) → กางหัวข้อที่เกี่ยวข้องในแผนผังเลย
+        if (mode === "map" || jump.closest(".mm-leaf-detail")) openMapDetail(jump.dataset.target);
+        else jumpTo(jump.dataset.target);
+        return;
+      }
 
       const catJump = e.target.closest(".gs-cat-jump");
       if (catJump && hasCats) {
@@ -623,12 +775,223 @@ window.GrammarSummaryView = (function () {
 
   function mmLeaf(uid, pattern, unitId, desc) {
     const hay = [(pattern || ""), (desc || "")].join(" ").toLowerCase();
+    const known = window.GrammarKnown && window.GrammarKnown.isKnown(uid);
     return `
-      <div class="mm-node mm-leaf" data-search="${escapeAttr(hay)}">
+      <div class="mm-node mm-leaf${known ? " is-known" : ""}" data-search="${escapeAttr(hay)}">
+        <button class="mm-check" type="button" data-known="${escapeAttr(uid)}"
+          role="checkbox" aria-checked="${known ? "true" : "false"}"
+          title="ติ๊กว่าจำได้แล้ว" aria-label="จำได้แล้ว">
+          <span class="mm-check-mark" aria-hidden="true">✓</span>
+        </button>
         <button class="mm-label mm-point gs-map-open" type="button"
           data-unit="${escapeAttr(unitId)}" data-target="${escapeAttr(uid)}"
           title="ไปที่บทเรียน">${escapeHtml(shortPat(pattern))}</button>
       </div>`;
+  }
+
+  /* ดัชนีความเชื่อมโยงต่อระดับ (cache) — ใช้สร้างเมนู "ที่เกี่ยวข้อง" ในแผนผัง */
+  const INDEX_CACHE = {};
+  function buildLevelIndex(level) {
+    if (INDEX_CACHE[level]) return INDEX_CACHE[level];
+    const lvl = (window.LEVELS || {})[level] || { units: [] };
+    const map = (window.GRAMMAR_MAP && window.GRAMMAR_MAP[level]) || { categories: [], paths: [] };
+    const categories = map.categories || [];
+    const paths = map.paths || [];
+    const catOf = {}, patOf = {}, formOf = {}, pathsOf = {};
+    categories.forEach((c) => (c.refs || []).forEach((ref) =>
+      (ref[1] || []).forEach((i) => { catOf[ref[0] + "#" + i] = c; })));
+    (lvl.units || []).forEach((u) => (u.points || []).forEach((pt, i) => {
+      const uid = u.id + "#" + i;
+      patOf[uid] = pt.pattern;
+      formOf[uid] = deriveForms(pt.pattern, u.id);
+    }));
+    paths.forEach((p) => {
+      const steps = (p.steps || []).map((s) => s[0] + "#" + s[1]);
+      steps.forEach((stepUid, k) => {
+        (pathsOf[stepUid] = pathsOf[stepUid] || []).push({
+          pathId: p.id, label: p.label, idx: k, total: steps.length,
+          prev: k > 0 ? steps[k - 1] : null,
+          next: k < steps.length - 1 ? steps[k + 1] : null
+        });
+      });
+    });
+    return (INDEX_CACHE[level] = { catOf, patOf, formOf, pathsOf });
+  }
+
+  /* หา {unit, point} จาก uid (<unitId>#<index>) ข้ามทุกระดับ */
+  function findPoint(uid) {
+    const s = String(uid || "");
+    const h = s.lastIndexOf("#");
+    if (h === -1) return null;
+    const unitId = s.slice(0, h);
+    const idx = parseInt(s.slice(h + 1), 10);
+    const order = (window.LEVEL_ORDER && window.LEVEL_ORDER.length)
+      ? window.LEVEL_ORDER : Object.keys(window.LEVELS || {});
+    for (let n = 0; n < order.length; n++) {
+      const lvl = (window.LEVELS || {})[order[n]];
+      if (!lvl) continue;
+      const u = (lvl.units || []).find((x) => x.id === unitId);
+      if (u && u.points && u.points[idx]) return { unit: u, point: u.points[idx], level: order[n], idx };
+    }
+    return null;
+  }
+
+  /* ---------- จับคู่ข้อสอบกับหัวข้อ (heuristic) ----------
+   * ข้อมูล quiz เป็นระดับ "ทั้งบท" (unit.quiz[]) ไม่ได้แยกตามหัวข้อ จึงใช้
+   * การจับคู่อัตโนมัติ: ให้คะแนนแต่ละข้อกับหัวข้อที่ "คำเฉพาะ" (rare token)
+   * ทับซ้อนกันมากที่สุด — token ที่ปรากฏในหลายหัวข้อจะถ่วงน้ำหนักต่ำ (1/df)
+   * ทำให้ข้อสอบไปอยู่กับหัวข้อที่ตรงที่สุด แทนหัวข้อที่ใช้คำพื้น ๆ เหมือนกัน */
+  const QUIZ_CACHE = {};
+  function jpRuns(s) {
+    return String(s || "").match(/[\u3040-\u30ff\u4e00-\u9faf\u3005\u30fc]+/g) || [];
+  }
+  function patternTokens(pattern) {
+    const toks = [];
+    const add = (t) => { if (t && toks.indexOf(t) === -1) toks.push(t); };
+    const s = String(pattern || "");
+    jpRuns(s).forEach((run) => {
+      add(run);
+      for (const ch of run) add(ch); // single kana/kanji ด้วย เพื่อจับคำช่วยเดี่ยว
+    });
+    // คำ Latin (Godan/Ichidan ฯลฯ) + คำไทย (กริยาผิดกฎ ฯลฯ) — คำอธิบายข้อสอบมักใช้คำเหล่านี้
+    (s.match(/[A-Za-z]{3,}/g) || []).forEach((w) => add(w.toLowerCase()));
+    (s.match(/[\u0e00-\u0e7f]{2,}/g) || []).forEach((w) => add(w));
+    return toks;
+  }
+  function quizMatchText(q) {
+    const parts = [q.q || ""];
+    (q.choices || []).forEach((c) => parts.push(c));
+    if (q.type === "mcq" && typeof q.answer === "number" && q.choices) {
+      parts.push(q.choices[q.answer] || "");
+    } else if (q.answer != null) {
+      parts.push(Array.isArray(q.answer) ? q.answer.join(" ") : String(q.answer));
+    }
+    if (q.explain) parts.push(q.explain);
+    return parts.join(" ");
+  }
+  /* คืน map: pointIndex → array ของ quiz items ที่จับคู่กับหัวข้อนั้น */
+  function quizAssignmentsForUnit(unit) {
+    if (QUIZ_CACHE[unit.id]) return QUIZ_CACHE[unit.id];
+    const points = unit.points || [];
+    const quiz = unit.quiz || [];
+    const pointToks = points.map((p) => patternTokens(p.pattern));
+    // document frequency ต่อ token (นับจากจำนวนหัวข้อที่มี token นั้น)
+    const df = {};
+    pointToks.forEach((toks) => toks.forEach((t) => { df[t] = (df[t] || 0) + 1; }));
+    const byPoint = {};
+    quiz.forEach((q, qi) => {
+      const hay = quizMatchText(q).toLowerCase();
+      let best = -1, bestScore = 0;
+      pointToks.forEach((toks, pi) => {
+        let score = 0;
+        // ถ่วงน้ำหนักตามความยาว token: คำเฉพาะยาว ๆ (Godan, กริยาผิดกฎ) สำคัญกว่า
+        // คานะเดี่ยว (ま/す) ที่โผล่ในทุกข้อผันกริยา · หารด้วย df เพื่อลดคำพื้น
+        toks.forEach((t) => { if (hay.indexOf(t) !== -1) score += t.length / df[t]; });
+        if (score > bestScore + 1e-9) { bestScore = score; best = pi; }
+      });
+      if (best >= 0) (byPoint[best] = byPoint[best] || []).push({ q, qi });
+    });
+    return (QUIZ_CACHE[unit.id] = byPoint);
+  }
+
+  /* ---------- ข้อสอบตามหัวข้อในแผนผัง (interactive, พับเก็บได้) ---------- */
+  function mapQuizSectionHtml(uid, unit, pointIdx) {
+    const total = (unit.quiz || []).length;
+    if (!total) return "";
+    const byPoint = quizAssignmentsForUnit(unit);
+    const matched = byPoint[pointIdx] || [];
+    const n = matched.length;
+    const fullBtn = `<button class="btn ghost btn-sm gs-open-quiz" type="button" data-unit="${escapeAttr(unit.id)}">ฝึกแบบฝึกหัดทั้งบท (${total} ข้อ) →</button>`;
+    if (!n) {
+      // ไม่มีข้อตรงหัวข้อนี้ → แสดงเฉพาะปุ่มไปแบบฝึกหัดทั้งบท
+      return `
+        <div class="mm-quiz mm-quiz-none">
+          <div class="mm-quiz-empty">ยังไม่มีแบบฝึกหัดเจาะจงหัวข้อนี้</div>
+          <div class="mm-quiz-foot">${fullBtn}</div>
+        </div>`;
+    }
+    const items = matched.map((m) => mapQuizItemHtml(m.q, unit, m.qi)).join("");
+    return `
+      <div class="mm-quiz collapsed">
+        <button class="mm-quiz-toggle" type="button" aria-expanded="false">
+          <span class="mm-quiz-caret" aria-hidden="true">▾</span>
+          <span class="mm-quiz-ico" aria-hidden="true">問</span>
+          <span class="mm-quiz-title">แบบฝึกหัดของหัวข้อนี้</span>
+          <span class="mm-quiz-n">${n} ข้อ</span>
+        </button>
+        <div class="mm-quiz-body">
+          <div class="mm-quiz-list">${items}</div>
+          <div class="mm-quiz-foot">${fullBtn}</div>
+        </div>
+      </div>`;
+  }
+
+  function mapQuizItemHtml(q, unit, qi) {
+    if (q.type === "fill") {
+      const answers = Array.isArray(q.answer) ? q.answer : [q.answer];
+      return `
+        <div class="mm-quiz-item" data-explain="${escapeAttr(q.explain || "")}">
+          <div class="mm-quiz-q">${escapeHtml(q.q || "")}</div>
+          <div class="mm-quiz-fill">
+            <input type="text" class="txt-input mm-fill" autocomplete="off"
+              autocapitalize="off" autocorrect="off" spellcheck="false"
+              data-answers="${escapeAttr(JSON.stringify(answers))}" placeholder="พิมพ์คำตอบ…" />
+            <button class="btn btn-sm mm-fill-check" type="button">ตรวจ</button>
+          </div>
+          <div class="mm-quiz-fb" hidden></div>
+        </div>`;
+    }
+    // mcq — สลับลำดับตัวเลือก แต่จำดัชนีคำตอบที่ถูกไว้
+    const choices = (q.choices || []).map((c, i) => ({ c, correct: i === q.answer }));
+    for (let i = choices.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const t = choices[i]; choices[i] = choices[j]; choices[j] = t;
+    }
+    const btns = choices.map((o) =>
+      `<button class="choice mm-choice" type="button" data-correct="${o.correct ? "1" : "0"}">${escapeHtml(o.c)}</button>`
+    ).join("");
+    return `
+      <div class="mm-quiz-item" data-explain="${escapeAttr(q.explain || "")}">
+        <div class="mm-quiz-q">${escapeHtml(q.q || "")}</div>
+        <div class="mm-quiz-choices">${btns}</div>
+        <div class="mm-quiz-fb" hidden></div>
+      </div>`;
+  }
+
+  /* เนื้อหาหัวข้อแบบกางในแผนผัง — desc + ตัวอย่าง + ปุ่มเปิดบทเรียน + ข้อสอบ */
+  function mapDetailHtml(uid) {
+    const r = findPoint(uid);
+    if (!r) return `<div class="mm-detail-empty">ไม่พบเนื้อหา</div>`;
+    const p = r.point;
+    const examples = (p.examples || []).map((ex) => `
+      <div class="example">
+        <div class="jp">${escapeHtml(ex.jp)}</div>
+        ${ex.ro ? `<div class="ro">${escapeHtml(ex.ro)}</div>` : ""}
+        ${ex.th ? `<div class="th">— ${escapeHtml(ex.th)}</div>` : ""}
+      </div>`).join("");
+    const openLesson = `
+      <div class="mm-detail-actions">
+        <button class="btn ghost btn-sm gs-open-unit" type="button" data-unit="${escapeAttr(r.unit.id)}">เปิดบทเรียน →</button>
+      </div>`;
+    const quiz = mapQuizSectionHtml(uid, r.unit, r.idx);
+    return `
+      <div class="mm-detail-head">
+        <span class="mm-detail-pat">${escapeHtml(p.pattern)}</span>
+      </div>
+      ${p.desc ? `<div class="desc">${formatDesc(p.desc)}</div>` : ""}
+      ${examples}
+      ${openLesson}
+      ${quiz}`;
+  }
+
+  /* แสดงผลตรวจคำตอบในข้อสอบแผนผัง */
+  function showMapFeedback(item, ok) {
+    const fb = item.querySelector(".mm-quiz-fb");
+    if (!fb) return;
+    const explain = item.dataset.explain || "";
+    fb.hidden = false;
+    fb.className = "mm-quiz-fb " + (ok ? "ok" : "bad");
+    fb.innerHTML = `<span class="mm-quiz-fb-mark">${ok ? "✓ ถูกต้อง" : "✗ ยังไม่ถูก"}</span>${explain ? `<span class="mm-quiz-fb-ex">${escapeHtml(explain)}</span>` : ""}`;
   }
 
   /* ---------- การ์ดหัวข้อเดียว ---------- */
