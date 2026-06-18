@@ -39,39 +39,80 @@ window.GrammarSummaryView = (function () {
   FORMS.forEach((f) => { FORM_LABEL[f.id] = f; });
   const FORM_IDS = FORMS.map((f) => f.id);
 
-  /* แยกรูปการผันจากข้อความ pattern — คืน array ของ form id (อาจมีหลายรูป)
-   * เงื่อนไขสำคัญ: ต้องมี V/S นำหน้า て・た・ない เพื่อกัน false positive
-   * เช่น について (มี て แต่ไม่ใช่ V-て) หรือ とは限らない (ない แต่ไม่ใช่ V) */
-  function deriveForms(pat) {
+  /* แยกรูปการผันจากข้อความ pattern (+ unitId เป็นบริบทเสริม) — คืน array ของ form id
+   * หลักการกัน false positive: て・た・ない ต้องมี V/S นำหน้า
+   *   เช่น について (มี て แต่ไม่ใช่ V-て) หรือ とは限らない (ない แต่ไม่ใช่ V) จะไม่ถูกจับ
+   * ข้อยกเว้นที่จับเพิ่ม:
+   *   - สำนวน て ที่ไม่กำกวม (てください・ています・てあります ฯลฯ) แม้ไม่มี V นำหน้า
+   *   - pattern ขึ้นต้นด้วย 〜て (เช่น 〜てください・〜ては)
+   *   - subscript ห้อย V₁て V₂ (U+2080–2089) ที่ \d เดิมจับไม่ได้
+   *   - ป้ายไทยของบทพื้นฐาน เช่น "รูป ない", "ตารางผัน ます"
+   *   - บทที่ "ทั้งบทเป็นรูปเดียว" (te-form / passive / causative) ใช้ unitId ยืนยัน */
+  function deriveForms(pat, unitId) {
     const s = String(pat || "");
+    const uid = String(unitId || "");
     const out = [];
     const add = (id) => { if (out.indexOf(id) === -1) out.push(id); };
+    const D = "[\\d\\u2080-\\u2089]?"; // ASCII หรือ subscript digit (V₁ ฯลฯ)
     // รูปพิเศษ — ตรวจก่อน
-    if (/可能形|可能 ?kei|見える|聞こえる/.test(s)) add("potential");
-    if (/受身形|ukemi/.test(s)) add("passive");
-    if (/使役形|shieki|\(さ\)せて/.test(s)) add("causative");
-    if (/命令形|meirei/.test(s)) add("imperative");
-    if (/意向形|ikou/.test(s)) add("volitional");
-    // รูปพื้นฐาน — ต้องมี V หรือ S นำหน้า
-    if (/[VS]\d?[‐\- ]?て|他動詞.{0,6}て|自動詞.{0,6}て/.test(s)) add("te");
-    if (/[VS]\d?[‐\- ]?た(?!い)/.test(s)) add("ta");
-    if (/[VS]\d?[‐\- ]?ない|V[‐\- ]?ず/.test(s)) add("nai");
-    if (/ます[‐\- ]?stem|連用形|V[‐\- ]?(stem|ます|ませ|ましょ|ました)/.test(s)) add("masu");
-    if (/辞書形|jisho|Vる|รูปดิก/.test(s)) add("dic");
+    if (/可能形|可能 ?kei|見える|聞こえる|รูปสามารถ/.test(s)) add("potential");
+    if (/受身形|ukemi|รูปถูกกระทำ/.test(s) || /passive/.test(uid)) add("passive");
+    if (/使役形|shieki|\(さ\)せて|รูปให้ทำ/.test(s) || /causative/.test(uid)) add("causative");
+    if (/命令形|meirei|รูปคำสั่ง/.test(s)) add("imperative");
+    if (/意向形|ikou|รูปตั้งใจ/.test(s)) add("volitional");
+    // รูป て — V/S นำหน้า · สำนวน て ชัดเจน · ขึ้นต้น 〜て · ทั้งบทเป็นรูป て
+    const teCompound = /て ?(い(ます|る|ない|ません)|あり?ます|ある|おき|おく|ください|しま|みま|みる|から)/;
+    if (new RegExp("[VS]" + D + "[‐\\- ]?て").test(s) ||
+        /他動詞.{0,20}て|自動詞.{0,20}て/.test(s) ||
+        /〜 ?て/.test(s) || teCompound.test(s) || /(^|-)te-forms?($|-)/.test(uid)) add("te");
+    if (new RegExp("[VS]" + D + "[‐\\- ]?た(?!い)").test(s)) add("ta");
+    if (new RegExp("[VS]" + D + "[‐\\- ]?ない").test(s) || /V[‐\- ]?ず|รูป ?ない|形 ?ない/.test(s)) add("nai");
+    if (/ます[‐\- ]?stem|連用形|ผัน ?ます|V[‐\- ]?(stem|ます|ませ|ましょ|ました)/.test(s)) add("masu");
+    if (/辞書形|jisho|Vる|รูปดิก|รูปพจนานุกรม/.test(s)) add("dic");
     if (/ば形|ければ|V ?[‐\-]?ば|Vば/.test(s)) add("ba");
     if (/普通形|plain|รูปธรรมดา/.test(s)) add("plain");
     if (!out.length) add("other");
     return out;
   }
 
+  const MAP_LV_KEY = "jp_grammar_map_levels_v1";
+
   function loadMode() {
     try {
       const m = localStorage.getItem(MODE_KEY);
-      return (m === "cat" || m === "form") ? m : "unit";
-    } catch (_) { return "unit"; }
+      return (m === "cat" || m === "form" || m === "unit" || m === "map") ? m : "map";
+    } catch (_) { return "map"; }
   }
   function saveMode(m) {
     try { localStorage.setItem(MODE_KEY, m); } catch (_) {}
+  }
+
+  /* ชุดระดับที่แสดงในแผนผัง — เลือกได้หลายระดับพร้อมกัน (ลด/เพิ่ม N5・N4・N3) */
+  function loadMapLevels(fallback) {
+    try {
+      const raw = JSON.parse(localStorage.getItem(MAP_LV_KEY) || "null");
+      if (Array.isArray(raw)) {
+        const order = window.LEVEL_ORDER || [];
+        const f = order.filter((l) => raw.indexOf(l) !== -1);
+        if (f.length) return f;
+      }
+    } catch (_) {}
+    return [fallback];
+  }
+  function saveMapLevels(arr) {
+    try { localStorage.setItem(MAP_LV_KEY, JSON.stringify(arr)); } catch (_) {}
+  }
+
+  /* การจัดกลุ่มในแผนผัง: "level" (ระดับ→หมวด) หรือ "form" (รูปคำ→ระดับ, รวมข้ามระดับ) */
+  const MAP_GROUP_KEY = "jp_grammar_map_group_v1";
+  function loadMapGroup() {
+    try {
+      const g = localStorage.getItem(MAP_GROUP_KEY);
+      return g === "form" ? "form" : "level";
+    } catch (_) { return "level"; }
+  }
+  function saveMapGroup(g) {
+    try { localStorage.setItem(MAP_GROUP_KEY, g); } catch (_) {}
   }
 
   function render(level, onOpenUnit) {
@@ -111,7 +152,7 @@ window.GrammarSummaryView = (function () {
     units.forEach((u) => (u.points || []).forEach((pt, i) => {
       const uid = u.id + "#" + i;
       patOf[uid] = pt.pattern;
-      formOf[uid] = deriveForms(pt.pattern);
+      formOf[uid] = deriveForms(pt.pattern, u.id);
     }));
     const pathsOf = {};
     paths.forEach((p) => {
@@ -125,7 +166,12 @@ window.GrammarSummaryView = (function () {
       });
     });
 
-    let mode = hasCats ? loadMode() : "unit";
+    let mode = loadMode();
+    if (mode === "cat" && !hasCats) mode = "unit";
+
+    /* ชุดระดับสำหรับโหมดแผนผัง (default = ระดับที่เลือกอยู่) */
+    let mapLevels = loadMapLevels(level);
+    let mapGroup = loadMapGroup();
 
     const totalPoints = units.reduce((n, u) => n + (u.points ? u.points.length : 0), 0);
 
@@ -146,9 +192,22 @@ window.GrammarSummaryView = (function () {
       </div>
 
       <div class="gs-modes" role="tablist" aria-label="โหมดการจัดกลุ่ม">
+        <button class="gs-mode ${mode === "map" ? "on" : ""}" data-mode="map" type="button">แผนผัง</button>
         <button class="gs-mode ${mode === "unit" ? "on" : ""}" data-mode="unit" type="button">ตาม Unit</button>
         ${hasCats ? `<button class="gs-mode ${mode === "cat" ? "on" : ""}" data-mode="cat" type="button">ตามหมวดหมู่</button>` : ""}
         <button class="gs-mode ${mode === "form" ? "on" : ""}" data-mode="form" type="button">ตามรูปคำ</button>
+      </div>
+
+      <div class="gs-map-levels" id="gsMapLevels" hidden>
+        <span class="gs-map-levels-label">ระดับในแผนผัง</span>
+        ${(window.LEVEL_ORDER || []).map((id) =>
+          `<button class="gs-lvl-chip ${mapLevels.indexOf(id) !== -1 ? "on" : ""}" data-level="${escapeAttr(id)}" type="button">${escapeHtml(shortLevel(id))}</button>`
+        ).join("")}
+        <span class="gs-map-group" role="group" aria-label="วิธีจัดกลุ่มแผนผัง">
+          <button class="gs-grp-btn ${mapGroup === "level" ? "on" : ""}" data-group="level" type="button">ตามระดับ</button>
+          <button class="gs-grp-btn ${mapGroup === "form" ? "on" : ""}" data-group="form" type="button">ตามรูปคำ</button>
+        </span>
+        <span class="gs-map-hint">แตะหมวดเพื่อกางหัวข้อ · แตะหัวข้อเพื่อไปบทเรียน</span>
       </div>
 
       <div class="gs-sections" id="gsGroups"></div>
@@ -158,8 +217,18 @@ window.GrammarSummaryView = (function () {
     const groups = root.querySelector("#gsGroups");
     const search = root.querySelector("#gsSearch");
     const noResult = root.querySelector("#gsNoResult");
+    const mapLevelsBar = root.querySelector("#gsMapLevels");
 
     function buildGroups() {
+      const isMap = mode === "map";
+      mapLevelsBar.hidden = !isMap;
+      groups.classList.toggle("gs-sections-map", isMap);
+      if (isMap) {
+        const html = mapGroup === "form" ? mapByFormHtml(mapLevels) : mapHtml(mapLevels);
+        groups.innerHTML = html || `<div class='empty'>เลือกอย่างน้อยหนึ่งระดับ</div>`;
+        applyMapSearch();
+        return;
+      }
       if (mode === "cat" && hasCats) {
         groups.innerHTML = categories.map((c) => categorySectionHtml(c, resolve, catOf, pathsOf, patOf, formOf)).join("")
           || `<div class='empty'>ยังไม่มีเนื้อหา</div>`;
@@ -189,6 +258,41 @@ window.GrammarSummaryView = (function () {
       noResult.hidden = anyVisible;
     }
 
+    /* ค้นหาในโหมดแผนผัง — กรองที่ใบ (หัวข้อ) แล้วกางหมวด/ระดับที่มีผลลัพธ์ */
+    function applyMapSearch() {
+      const tree = groups.querySelector(".mm-tree");
+      if (!tree) { noResult.hidden = true; return; }
+      const q = search.value.trim().toLowerCase();
+      if (!q) {
+        tree.querySelectorAll(".mm-leaf").forEach((l) => { l.hidden = false; });
+        if (mapGroup === "form") {
+          // รูปคำ → ระดับ: ยุบทั้งหมวด(รูปคำ)และระดับ ให้เริ่มจากภาพรวม
+          tree.querySelectorAll(".mm-cat-node, .mm-level-node").forEach((n) => { n.hidden = false; n.classList.add("collapsed"); });
+        } else {
+          tree.querySelectorAll(".mm-cat-node").forEach((c) => { c.hidden = false; c.classList.add("collapsed"); });
+          tree.querySelectorAll(".mm-level-node, .mm-root-node").forEach((n) => { n.hidden = false; n.classList.remove("collapsed"); });
+        }
+        noResult.hidden = true;
+        return;
+      }
+      let any = false;
+      tree.querySelectorAll(".mm-leaf").forEach((l) => {
+        const m = (l.dataset.search || "").indexOf(q) !== -1;
+        l.hidden = !m;
+        if (m) any = true;
+      });
+      // โหนดที่มีหัวข้ออยู่ข้างใน: ซ่อนถ้าไม่มีผลลัพธ์ กางถ้ามี (ใช้ได้ทั้งสองโครงสร้าง)
+      tree.querySelectorAll(".mm-node").forEach((node) => {
+        if (node.classList.contains("mm-leaf")) return;
+        const leaves = node.querySelectorAll(".mm-leaf");
+        if (!leaves.length) return;
+        const vis = Array.prototype.some.call(leaves, (l) => !l.hidden);
+        node.hidden = !vis;
+        if (vis) node.classList.remove("collapsed");
+      });
+      noResult.hidden = any;
+    }
+
     function jumpTo(uid) {
       const el = groups.querySelector('.gs-point[data-uid="' + cssEscape(uid) + '"]');
       if (!el) return;
@@ -206,6 +310,46 @@ window.GrammarSummaryView = (function () {
 
     // event delegation
     root.addEventListener("click", (e) => {
+      // แผนผัง: แตะระดับเพื่อ ลด/เพิ่ม ระดับ
+      const lvlChip = e.target.closest(".gs-lvl-chip");
+      if (lvlChip) {
+        const id = lvlChip.dataset.level;
+        const has = mapLevels.indexOf(id) !== -1;
+        let next = has ? mapLevels.filter((l) => l !== id) : mapLevels.concat([id]);
+        if (!next.length) return; // ต้องเหลืออย่างน้อยหนึ่งระดับ
+        const order = window.LEVEL_ORDER || [];
+        next = order.filter((l) => next.indexOf(l) !== -1);
+        mapLevels = next;
+        saveMapLevels(mapLevels);
+        root.querySelectorAll(".gs-lvl-chip").forEach((c) => c.classList.toggle("on", mapLevels.indexOf(c.dataset.level) !== -1));
+        buildGroups();
+        return;
+      }
+
+      // แผนผัง: สลับวิธีจัดกลุ่ม (ตามระดับ / ตามรูปคำ)
+      const grpBtn = e.target.closest(".gs-grp-btn");
+      if (grpBtn) {
+        const g = grpBtn.dataset.group;
+        if (g !== mapGroup) {
+          mapGroup = g; saveMapGroup(mapGroup);
+          root.querySelectorAll(".gs-grp-btn").forEach((b) => b.classList.toggle("on", b.dataset.group === mapGroup));
+          buildGroups();
+        }
+        return;
+      }
+
+      // แผนผัง: แตะหัวข้อ → ไปบทเรียนนั้น
+      const mapOpen = e.target.closest(".gs-map-open");
+      if (mapOpen) { e.preventDefault(); if (typeof onOpenUnit === "function") onOpenUnit(mapOpen.dataset.unit); return; }
+
+      // แผนผัง: แตะหมวด/ระดับ → กาง/ยุบกิ่ง
+      const toggleLabel = e.target.closest(".mm-label[data-toggle]");
+      if (toggleLabel) {
+        const node = toggleLabel.closest(".mm-node");
+        if (node) node.classList.toggle("collapsed");
+        return;
+      }
+
       const openBtn = e.target.closest(".gs-open-unit");
       if (openBtn) { e.preventDefault(); if (typeof onOpenUnit === "function") onOpenUnit(openBtn.dataset.unit); return; }
 
@@ -243,12 +387,20 @@ window.GrammarSummaryView = (function () {
     }
 
     root.querySelector("#gsExpand").addEventListener("click", () => {
+      if (mode === "map") {
+        groups.querySelectorAll(".mm-node").forEach((n) => n.classList.remove("collapsed"));
+        return;
+      }
       groups.querySelectorAll(".gs-point:not([hidden])").forEach((d) => { d.open = true; });
     });
     root.querySelector("#gsCollapse").addEventListener("click", () => {
+      if (mode === "map") {
+        groups.querySelectorAll(".mm-cat-node").forEach((n) => n.classList.add("collapsed"));
+        return;
+      }
       groups.querySelectorAll(".gs-point").forEach((d) => { d.open = false; });
     });
-    search.addEventListener("input", applySearch);
+    search.addEventListener("input", () => { (mode === "map" ? applyMapSearch : applySearch)(); });
 
     buildGroups();
     return root;
@@ -335,6 +487,148 @@ window.GrammarSummaryView = (function () {
         </div>
         <div class="pt-guides gs-points">${points.join("")}</div>
       </section>`;
+  }
+
+  /* ---------- แผนผัง (mind-map) ตามความเกี่ยวข้อง ---------- */
+  /* โครงสร้าง: (ราก) → ระดับ → หมวดหมู่ → หัวข้อ
+   * หัวข้อแต่ละใบกดเพื่อลิงค์ไปบทเรียน; รองรับหลายระดับพร้อมกัน */
+  function mapHtml(levels) {
+    const active = (levels || []).filter((id) => window.LEVELS && window.LEVELS[id]);
+    if (!active.length) return "";
+    const levelNodes = active.map(mmLevelNode).join("");
+    let inner;
+    if (active.length === 1) {
+      inner = levelNodes;
+    } else {
+      inner = `
+        <div class="mm-node mm-root-node">
+          <button class="mm-label mm-root" type="button" data-toggle>
+            <span class="mm-caret" aria-hidden="true">▾</span>文法
+          </button>
+          <div class="mm-children mm-levels">${levelNodes}</div>
+        </div>`;
+    }
+    return `<div class="mm-tree">${inner}</div>`;
+  }
+
+  /* จัดกลุ่มตามรูปคำ — รวมหัวข้อที่ "รูปเหมือนกัน" ข้ามทุกระดับที่เลือก
+   * โครงสร้าง: รูปคำ (て形 ฯลฯ) → ระดับ → หัวข้อ
+   * ใช้ deriveForms() เดียวกับโหมด "ตามรูปคำ" จึงครอบคลุมทุกระดับอัตโนมัติ */
+  function mapByFormHtml(levels) {
+    const active = (levels || []).filter((id) => window.LEVELS && window.LEVELS[id]);
+    if (!active.length) return "";
+    const formNodes = FORMS.map((f) => mmFormNode(f, active)).filter(Boolean).join("");
+    if (!formNodes) return "";
+    return `<div class="mm-tree">${formNodes}</div>`;
+  }
+
+  function mmFormNode(form, levels) {
+    let total = 0;
+    const levelNodes = levels.map((levelId) => {
+      const lvl = window.LEVELS[levelId] || { units: [] };
+      const leaves = [];
+      (lvl.units || []).forEach((u) => (u.points || []).forEach((p, i) => {
+        if (deriveForms(p.pattern, u.id).indexOf(form.id) !== -1) {
+          leaves.push(mmLeaf(u.id + "#" + i, p.pattern, u.id, p.desc));
+        }
+      }));
+      if (!leaves.length) return "";
+      total += leaves.length;
+      return `
+        <div class="mm-node mm-level-node collapsed">
+          <button class="mm-label mm-level lv-${escapeAttr(levelId)}" type="button" data-toggle>
+            <span class="mm-caret" aria-hidden="true">▾</span>${escapeHtml(shortLevel(levelId))}
+            <span class="mm-count">${leaves.length}</span>
+          </button>
+          <div class="mm-children mm-points">${leaves.join("")}</div>
+        </div>`;
+    }).filter(Boolean);
+    if (!levelNodes.length) return "";
+    return `
+      <div class="mm-node mm-cat-node collapsed" data-form="${escapeAttr(form.id)}">
+        <button class="mm-label mm-cat" type="button" data-toggle>
+          <span class="mm-caret" aria-hidden="true">▾</span>
+          <span class="mm-ico">${escapeHtml(form.icon || "")}</span>
+          <span class="mm-cat-label">${escapeHtml(form.label)}</span>
+          <span class="mm-count">${total}</span>
+        </button>
+        <div class="mm-children mm-cats">${levelNodes.join("")}</div>
+      </div>`;
+  }
+
+  function mmLevelNode(levelId) {
+    const lvl = window.LEVELS[levelId] || { units: [] };
+    const map = (window.GRAMMAR_MAP && window.GRAMMAR_MAP[levelId]) || { categories: [] };
+    const units = lvl.units || [];
+    const unitById = {};
+    units.forEach((u) => { unitById[u.id] = u; });
+    const resolveFn = (uid, i) => {
+      const u = unitById[uid];
+      if (!u || !u.points || !u.points[i]) return null;
+      return { unit: u, point: u.points[i] };
+    };
+
+    let cats = (map.categories || []).map((c) => mmCatNode(c, levelId, resolveFn)).filter(Boolean);
+    // ระดับไม่มีหมวด → ถอยไปจัดกลุ่มตาม unit
+    if (!cats.length) {
+      cats = units.map((u) => mmUnitCatNode(u, levelId)).filter(Boolean);
+    }
+    const body = cats.join("") || `<div class="mm-empty">ยังไม่มีเนื้อหา</div>`;
+    return `
+      <div class="mm-node mm-level-node">
+        <button class="mm-label mm-level lv-${escapeAttr(levelId)}" type="button" data-toggle>
+          <span class="mm-caret" aria-hidden="true">▾</span>${escapeHtml(shortLevel(levelId))}
+        </button>
+        <div class="mm-children mm-cats">${body}</div>
+      </div>`;
+  }
+
+  function mmCatNode(cat, levelId, resolveFn) {
+    const leaves = (cat.refs || []).flatMap((ref) =>
+      (ref[1] || []).map((i) => {
+        const r = resolveFn(ref[0], i);
+        if (!r) return "";
+        return mmLeaf(ref[0] + "#" + i, r.point.pattern, ref[0], r.point.desc);
+      })
+    ).filter(Boolean);
+    if (!leaves.length) return "";
+    return `
+      <div class="mm-node mm-cat-node collapsed" data-cat="${escapeAttr(cat.id)}">
+        <button class="mm-label mm-cat lv-${escapeAttr(levelId)}" type="button" data-toggle>
+          <span class="mm-caret" aria-hidden="true">▾</span>
+          <span class="mm-ico">${escapeHtml(cat.icon || "")}</span>
+          <span class="mm-cat-label">${escapeHtml(cat.label)}</span>
+          <span class="mm-count">${leaves.length}</span>
+        </button>
+        <div class="mm-children mm-points">${leaves.join("")}</div>
+      </div>`;
+  }
+
+  /* fallback: หนึ่ง unit = หนึ่งหมวด เมื่อระดับยังไม่มี categories */
+  function mmUnitCatNode(unit, levelId) {
+    const leaves = (unit.points || []).map((p, i) =>
+      mmLeaf(unit.id + "#" + i, p.pattern, unit.id, p.desc)
+    );
+    if (!leaves.length) return "";
+    return `
+      <div class="mm-node mm-cat-node collapsed" data-cat="${escapeAttr(unit.id)}">
+        <button class="mm-label mm-cat lv-${escapeAttr(levelId)}" type="button" data-toggle>
+          <span class="mm-caret" aria-hidden="true">▾</span>
+          <span class="mm-cat-label">${escapeHtml(shortUnit(unit))}</span>
+          <span class="mm-count">${leaves.length}</span>
+        </button>
+        <div class="mm-children mm-points">${leaves.join("")}</div>
+      </div>`;
+  }
+
+  function mmLeaf(uid, pattern, unitId, desc) {
+    const hay = [(pattern || ""), (desc || "")].join(" ").toLowerCase();
+    return `
+      <div class="mm-node mm-leaf" data-search="${escapeAttr(hay)}">
+        <button class="mm-label mm-point gs-map-open" type="button"
+          data-unit="${escapeAttr(unitId)}" data-target="${escapeAttr(uid)}"
+          title="ไปที่บทเรียน">${escapeHtml(shortPat(pattern))}</button>
+      </div>`;
   }
 
   /* ---------- การ์ดหัวข้อเดียว ---------- */
@@ -425,6 +719,9 @@ window.GrammarSummaryView = (function () {
     const t = String(unit.title || "");
     const head = t.split("—")[0].trim();
     return head || unit.id;
+  }
+  function shortLevel(id) {
+    return String(id || "").toUpperCase();
   }
   function formatDesc(s) {
     return escapeHtml(s || "").replace(/\n/g, "<br>");

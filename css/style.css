@@ -2175,6 +2175,104 @@ h3 { margin: 0 0 6px; font-size: 16px; }
   100% { box-shadow: 0 0 0 0 transparent; }
 }
 
+/* ---------- Grammar mind-map (แผนผัง) ---------- */
+.gs-map-levels {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 0 0 16px;
+}
+.gs-map-levels-label { font-size: 12px; color: var(--muted); }
+.gs-lvl-chip {
+  cursor: pointer; font-size: 13px; font-weight: 700;
+  padding: 5px 15px; border-radius: 999px;
+  border: 1px solid var(--line); background: rgba(0,0,0,.22); color: var(--muted);
+  transition: background .12s ease, color .12s ease, border-color .12s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.gs-lvl-chip:hover { color: var(--ink); border-color: var(--accent-border); }
+.gs-lvl-chip.on { background: var(--accent-soft); color: var(--accent-strong); border-color: var(--accent-border); }
+.gs-map-group {
+  display: inline-flex; gap: 4px; padding: 3px;
+  background: rgba(0,0,0,.22); border: 1px solid var(--line); border-radius: 999px;
+}
+.gs-grp-btn {
+  border: 0; background: transparent; cursor: pointer;
+  color: var(--muted); font-size: 12.5px; font-weight: 600;
+  padding: 5px 13px; border-radius: 999px;
+  transition: background .12s ease, color .12s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.gs-grp-btn:hover { color: var(--ink); }
+.gs-grp-btn.on { background: var(--accent-soft); color: var(--accent-strong); }
+.gs-map-hint { font-size: 11.5px; color: var(--muted); opacity: .8; margin-left: auto; }
+
+.gs-sections-map { display: block; }
+.mm-tree { padding: 4px 2px 18px; }
+.mm-node { display: block; }
+.mm-node.collapsed > .mm-children { display: none; }
+
+/* vertical indented tree: children sit under the parent with guide lines */
+.mm-children { margin-left: 20px; padding-left: 18px; }
+.mm-children > .mm-node { position: relative; }
+/* vertical guide — full height, trimmed to an L on the last child */
+.mm-children > .mm-node::before {
+  content: ""; position: absolute; left: -18px; top: 0; bottom: 0;
+  width: 2px; background: var(--line);
+}
+.mm-children > .mm-node:last-child::before { bottom: auto; height: 22px; }
+/* horizontal stub into each child's label */
+.mm-children > .mm-node::after {
+  content: ""; position: absolute; left: -18px; top: 22px;
+  width: 14px; height: 2px; background: var(--line);
+}
+
+/* node labels */
+.mm-node > .mm-label { margin: 4px 0; }
+.mm-label {
+  display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+  border: 1px solid var(--glass-border); background: var(--glass-bg); color: var(--ink);
+  padding: 8px 13px; border-radius: 12px;
+  font-family: inherit; font-size: 13.5px; font-weight: 600; white-space: nowrap;
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
+  transition: background .14s ease, border-color .14s ease, transform .08s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.mm-label:hover { background: var(--glass-bg-strong); border-color: var(--accent); }
+.mm-label:active { transform: translateY(1px); }
+.mm-caret {
+  font-size: 10px; color: var(--muted); transition: transform .14s ease;
+  display: inline-block;
+}
+.mm-node.collapsed > .mm-label .mm-caret { transform: rotate(-90deg); }
+
+.mm-root { font-size: 17px; font-weight: 800; color: var(--accent-strong); }
+.mm-level { font-size: 15px; font-weight: 800; color: var(--accent-strong); }
+.mm-cat .mm-ico {
+  width: 22px; height: 22px; border-radius: 7px;
+  display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent-strong);
+  font-size: 13px; font-weight: 700;
+}
+.mm-cat-label { color: var(--ink); }
+.mm-count {
+  font-size: 11px; color: var(--muted);
+  background: rgba(0,0,0,.28); border: 1px solid var(--line);
+  border-radius: 999px; padding: 1px 8px;
+}
+.mm-point {
+  font-size: 13px; font-weight: 600; color: var(--accent);
+  border-style: dashed;
+}
+.mm-point:hover { color: var(--accent-strong); border-style: solid; }
+.mm-empty { font-size: 13px; color: var(--muted); padding: 6px 4px; }
+
+@media (max-width: 540px) {
+  .gs-map-hint { margin-left: 0; flex-basis: 100%; }
+  .mm-children { margin-left: 14px; padding-left: 14px; }
+  .mm-children > .mm-node::before { left: -14px; }
+  .mm-children > .mm-node::after { left: -14px; width: 10px; }
+  .mm-label { padding: 7px 11px; font-size: 13px; }
+}
+
 @media (max-width: 540px) {
   .gs-unit-head { flex-wrap: wrap; }
   .gs-conn-open { margin-left: 0; }

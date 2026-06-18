@@ -62,7 +62,7 @@ window.N4_UNITS = [
     summary: "การผันรูปสามารถ, ความต่างระหว่าง 見える/見られる, 聞こえる/聞ける, การใช้ しか~ない และ なら",
     points: [
       {
-        pattern: "Vる → 可能形 kanou-kei (godan u→eる / ichidan る→られる / する→できる / くる→こられる)",
+        pattern: "Vる → รูปสามารถ (godan u→eる / ichidan る→られる / する→できる / くる→こられる)",
         desc: "บอกว่า 'สามารถ V ได้' กรรมเปลี่ยน を → が (เลือกใช้ก็ได้แต่ が เป็นทางการกว่า)",
         examples: [
           { jp: "わたしは かんじが かけます。", ro: "Watashi wa kanji ga kakemasu.", th: "ฉันเขียนคันจิได้" },
@@ -252,7 +252,7 @@ window.N4_UNITS = [
     summary: "การแสดงเจตนา/ความตั้งใจ + การอ้างคำพูดหรือความคิดของผู้พูด/คนอื่น",
     points: [
       {
-        pattern: "V意向形 ikou-kei (godan u→oう / ichidan る→よう / する→しよう / くる→こよう)",
+        pattern: "V รูปตั้งใจ (godan u→oう / ichidan る→よう / する→しよう / くる→こよう)",
         desc: "รูป 'ตั้งใจจะ V' ใช้ในใจ/ชวน/บอกความตั้งใจ เป็น plain ของ ~ましょう",
         examples: [
           { jp: "ちょっと やすもう。", ro: "Chotto yasumou.", th: "พักหน่อยเถอะ" },
@@ -260,14 +260,14 @@ window.N4_UNITS = [
         ]
       },
       {
-        pattern: "V意向形 + と 思(おも)って います / 思います",
+        pattern: "V รูปตั้งใจ + と 思(おも)って います / 思います",
         desc: "บอก 'ตั้งใจจะ V' (思(おも)っています = ตั้งใจมาก่อนหน้านี้แล้ว / 思います = เพิ่งคิดตอนนี้)",
         examples: [
           { jp: "らいねん にほんへ いこうと 思って います。", ro: "Rainen Nihon e ikou to omotte imasu.", th: "ปีหน้าคิดจะไปญี่ปุ่น" }
         ]
       },
       {
-        pattern: "V辞書形 jisho-kei + つもりです / V-ない + つもりです",
+        pattern: "V รูปพจนานุกรม + つもりです / V-ない + つもりです",
         desc: "บอก 'ตั้งใจจะ V / จะไม่ V' — เน้นความตั้งใจที่ตัดสินใจแล้ว",
         examples: [
           { jp: "らいげつ ひっこすつもりです。", ro: "Raigetsu hikkosu tsumori desu.", th: "เดือนหน้าตั้งใจจะย้ายบ้าน" },
@@ -287,14 +287,14 @@ window.N4_UNITS = [
       { type: "fill",
         q: "らいねん くるまを かおうと ____います。 (ตั้งใจ)",
         answer: ["おもって"],
-        explain: "意向形 + と思っています = ตั้งใจจะ V" },
+        explain: "รูปตั้งใจ + と思っています = ตั้งใจจะ V" },
       { type: "mcq",
         q: "もう おさけは ____つもりです。",
         choices: ["のもう", "のむ", "のまない", "のんで"],
         answer: 2,
         explain: "~ないつもり = ตั้งใจจะไม่ทำ" },
       { type: "fill",
-        q: "意向形 ของ する คือ ____",
+        q: "รูปตั้งใจ ของ する คือ ____",
         answer: ["しよう"],
         explain: "する → しよう" }
     ]
@@ -354,7 +354,7 @@ window.N4_UNITS = [
     summary: "รูปสั่งแบบไม่สุภาพ, ห้าม (~な), คำสั่งสุภาพ (~なさい), ป้าย/คำเขียน",
     points: [
       {
-        pattern: "命令形 meirei-kei (godan u→e / ichidan る→ろ / する→しろ / くる→こい)",
+        pattern: "รูปคำสั่ง (godan u→e / ichidan る→ろ / する→しろ / くる→こい)",
         desc: "คำสั่งแบบไม่สุภาพ — ใช้ระหว่างผู้ใหญ่กับเด็ก/พ่อกับลูก/ในกีฬา/สถานการณ์ฉุกเฉิน",
         examples: [
           { jp: "はやく 起(お)きろ!", ro: "Hayaku okiro!", th: "ตื่นเร็ว ๆ!" },
@@ -363,7 +363,7 @@ window.N4_UNITS = [
         ]
       },
       {
-        pattern: "V辞書形 jisho-kei + な",
+        pattern: "V รูปพจนานุกรม + な",
         desc: "'อย่า V' — รูปห้ามแบบไม่สุภาพ (ระวัง: ต่างกับ ~なさい สิ้นเชิง)",
         examples: [
           { jp: "ここで たばこを すうな。", ro: "Koko de tabako o suu na.", th: "ห้ามสูบบุหรี่ที่นี่" }
@@ -387,14 +387,14 @@ window.N4_UNITS = [
     ],
     quiz: [
       { type: "fill",
-        q: "命令形 (meirei-kei) ของ たべる คือ ____",
+        q: "รูปคำสั่ง ของ たべる คือ ____",
         answer: ["たべろ"],
         explain: "ichidan: る→ろ" },
       { type: "mcq",
         q: "เลือกประโยคห้ามที่ถูก",
         choices: ["ここに 入るな", "ここに 入ろう", "ここに 入りなさい", "ここに 入れ"],
         answer: 0,
-        explain: "辞書形 + な = ห้าม" },
+        explain: "รูปพจนานุกรม + な = ห้าม" },
       { type: "fill",
         q: "しずかに し____。 (สั่งสุภาพ — ครูกับนักเรียน)",
         answer: ["なさい"],
@@ -408,8 +408,8 @@ window.N4_UNITS = [
     summary: "ทำตาม, ก่อน-หลัง, การทำ/ไม่ทำพร้อมกัน (~て / ~ないで)",
     points: [
       {
-        pattern: "V辞書形 jisho-kei / V-た + とおりに",
-        desc: "'ทำตามที่ ~' — V辞書形 jisho-kei = ตามที่จะเกิด, V-た = ตามที่เกิดไปแล้ว",
+        pattern: "V รูปพจนานุกรม / V-た + とおりに",
+        desc: "'ทำตามที่ ~' — V รูปพจนานุกรม = ตามที่จะเกิด, V-た = ตามที่เกิดไปแล้ว",
         examples: [
           { jp: "わたしが する とおりに して ください。", ro: "Watashi ga suru toori ni shite kudasai.", th: "กรุณาทำตามที่ฉันทำ" },
           { jp: "ならった とおりに かいて ください。", ro: "Naratta toori ni kaite kudasai.", th: "ช่วยเขียนตามที่เรียนมา" }
@@ -473,7 +473,7 @@ window.N4_UNITS = [
         ]
       },
       {
-        pattern: "V-ば + V辞書形 + ほど / い-adj ければ + い + ほど / なAdj. + なら + なほど",
+        pattern: "V-ば + Vรูปพจนานุกรม + ほど / い-adj ければ + い + ほど / なAdj. + なら + なほど",
         desc: "'ยิ่ง V/A ยิ่ง ~' (สำนวน)  เช่น 安(やす)ければ 安いほど = ยิ่งถูกยิ่งดี / 静(しず)かなら 静かなほど = ยิ่งเงียบยิ่ง ~",
         examples: [
           { jp: "考(かんが)えれば 考(かんが)えるほど、 わからなく なります。", ro: "Kangaereba kangaeru hodo, wakaranaku narimasu.", th: "ยิ่งคิดยิ่งไม่เข้าใจ" }
@@ -503,7 +503,7 @@ window.N4_UNITS = [
     summary: "เป้าหมาย/ความหวัง, การเปลี่ยนความสามารถ/นิสัย",
     points: [
       {
-        pattern: "V辞書形 jisho-kei・V-ない + ように、~",
+        pattern: "V รูปพจนานุกรม・V-ない + ように、~",
         desc: "'เพื่อให้ V/ ไม่ V'  ใช้กับเป้าหมายที่อยู่เหนือการควบคุม (ความสามารถ/สภาพ) เช่น ~できる, わかる, intransitive",
         examples: [
           { jp: "にほんごが はなせる ように、 まいにち れんしゅうします。", ro: "Nihongo ga hanaseru you ni, mainichi renshuu shimasu.", th: "เพื่อให้พูดญี่ปุ่นได้ ฝึกทุกวัน" },
@@ -511,7 +511,7 @@ window.N4_UNITS = [
         ]
       },
       {
-        pattern: "V辞書形 jisho-kei + ように なります",
+        pattern: "V รูปพจนานุกรม + ように なります",
         desc: "'กลายเป็นว่า V ได้/ทำ V'  เน้นการเปลี่ยนแปลงจากที่ทำไม่ได้ → ทำได้",
         examples: [
           { jp: "じてんしゃに のれる ように なりました。", ro: "Jitensha ni noreru you ni narimashita.", th: "ขี่จักรยานได้แล้ว (เริ่มทำได้)" },
@@ -519,7 +519,7 @@ window.N4_UNITS = [
         ]
       },
       {
-        pattern: "V辞書形 jisho-kei・V-ない + ように します",
+        pattern: "V รูปพจนานุกรม・V-ない + ように します",
         desc: "'พยายาม (ไม่) V'  เน้นความตั้งใจของตัวเอง",
         examples: [
           { jp: "あまい ものを 食べない ように して います。", ro: "Amai mono o tabenai you ni shite imasu.", th: "พยายามไม่กินของหวาน" }
@@ -550,7 +550,7 @@ window.N4_UNITS = [
     summary: "Passive 3 ประเภท: direct, indirect/possession, suffering passive; การอ้างผู้สร้าง によって",
     points: [
       {
-        pattern: "受身形 ukemi-kei (godan u→a+れる / ichidan る→られる / する→される / くる→こられる)",
+        pattern: "รูปถูกกระทำ (godan u→a+れる / ichidan る→られる / する→される / くる→こられる)",
         desc: "'ถูก V' — กรรมขึ้นต้น (が/は), ผู้กระทำใช้ に",
         examples: [
           { jp: "わたしは ちちに しかられました。", ro: "Watashi wa chichi ni shikararemashita.", th: "ฉันถูกพ่อดุ" },
@@ -558,7 +558,7 @@ window.N4_UNITS = [
         ]
       },
       {
-        pattern: "Passive แบบเดือดร้อน (迷惑の受身 meiwaku no ukemi)",
+        pattern: "รูปถูกกระทำแบบเดือดร้อน (迷惑の受身)",
         desc: "'(ฉัน) เดือดร้อนเพราะ ~' กริยา intransitive ก็ใช้ได้ ผู้ที่เดือดร้อนเป็นประธาน",
         examples: [
           { jp: "あめに ふられて、 ぬれました。", ro: "Ame ni furarete, nuremashita.", th: "(ฉัน) เดือดร้อนเพราะฝนตก เลยเปียก" },
@@ -566,7 +566,7 @@ window.N4_UNITS = [
         ]
       },
       {
-        pattern: "N1 は N2 に よって V受身 ukemi",
+        pattern: "N1 は N2 に よって V รูปถูกกระทำ",
         desc: "ใช้บอก 'X ถูกสร้าง/แต่ง/ค้นพบโดย Y' (ผลงาน) ใช้กับสิ่งสำคัญในประวัติศาสตร์",
         examples: [
           { jp: "「げんじものがたり」は むらさきしきぶに よって 書かれました。", ro: "'Genji Monogatari' wa Murasakishikibu ni yotte kakaremashita.", th: "เก็นจิโมโนกาตาริถูกแต่งโดยมุราซากิชิคิบุ" }
@@ -575,7 +575,7 @@ window.N4_UNITS = [
     ],
     quiz: [
       { type: "fill",
-        q: "受身形 (ukemi-kei) ของ よむ คือ ____",
+        q: "รูปถูกกระทำ ของ よむ คือ ____",
         answer: ["よまれる"],
         explain: "godan: よむ → よま + れる" },
       { type: "mcq",
@@ -596,7 +596,7 @@ window.N4_UNITS = [
     summary: "การเปลี่ยนกริยา/ประโยคให้เป็นนาม + สำนวนสามารถและประสบการณ์",
     points: [
       {
-        pattern: "V辞書形 jisho-kei + の / こと + は・が・を ~",
+        pattern: "V รูปพจนานุกรม + の / こと + は・が・を ~",
         desc: "เปลี่ยนกริยาเป็นนาม — の ใช้ในการรับรู้/อาการ (見る, 聞く); こと ใช้กับ 思う, 知る, ความสามารถ",
         examples: [
           { jp: "わたしは うたを うたうのが すきです。", ro: "Watashi wa uta o utau no ga suki desu.", th: "ฉันชอบร้องเพลง" },
@@ -604,8 +604,8 @@ window.N4_UNITS = [
         ]
       },
       {
-        pattern: "V辞書形 jisho-kei + ことが できます",
-        desc: "อีกวิธีหนึ่งที่บอก 'สามารถ V ได้' (เทียบเท่า可能形)",
+        pattern: "V รูปพจนานุกรม + ことが できます",
+        desc: "อีกวิธีหนึ่งที่บอก 'สามารถ V ได้' (เทียบเท่ารูปสามารถ)",
         examples: [
           { jp: "ミラーさんは かんじを かくことが できます。", ro: "Mira-san wa kanji o kaku koto ga dekimasu.", th: "คุณมิลเลอร์เขียนคันจิได้" }
         ]
@@ -619,7 +619,7 @@ window.N4_UNITS = [
         ]
       },
       {
-        pattern: "Nの しゅみは V辞書形 jisho-kei + こと です",
+        pattern: "Nの しゅみは V รูปพจนานุกรม + こと です",
         desc: "งานอดิเรก/ความชอบ: 'งานอดิเรกคือ V'",
         examples: [
           { jp: "わたしの しゅみは えいがを みる ことです。", ro: "Watashi no shumi wa eiga o miru koto desu.", th: "งานอดิเรกของฉันคือดูหนัง" }
@@ -640,7 +640,7 @@ window.N4_UNITS = [
         q: "わたしの しゅみは ほんを ____ ことです。",
         choices: ["よむ", "よみます", "よんで", "よんだ"],
         answer: 0,
-        explain: "ก่อน こと ใช้ V辞書形 jisho-kei" }
+        explain: "ก่อน こと ใช้ V รูปพจนานุกรม" }
     ]
   },
 
@@ -786,7 +786,7 @@ window.N4_UNITS = [
     summary: "การบอกวัตถุประสงค์ ความต่างของ ために, ように, のに(N)",
     points: [
       {
-        pattern: "V辞書形 jisho-kei / N の + ために、 ~",
+        pattern: "V รูปพจนานุกรม / N の + ために、 ~",
         desc: "'เพื่อ V/N' — ใช้กับวัตถุประสงค์ที่ควบคุมได้ ประธานหน้า-หลังต้องเดียวกัน",
         examples: [
           { jp: "いえを 買う ために、 おかねを ためて います。", ro: "Ie o kau tame ni, okane o tamete imasu.", th: "เก็บเงินเพื่อซื้อบ้าน" },
@@ -794,14 +794,14 @@ window.N4_UNITS = [
         ]
       },
       {
-        pattern: "V辞書形 jisho-kei + ように (เป้าหมาย) — ทบทวน",
+        pattern: "V รูปพจนานุกรม + ように (เป้าหมาย) — ทบทวน",
         desc: "ใช้กับเป้าหมายที่ไม่ควบคุม (สามารถ/อาการ) ต่างกับ ために",
         examples: [
           { jp: "わすれない ように、 メモを とります。", ro: "Wasurenai you ni, memo o torimasu.", th: "เพื่อไม่ให้ลืม จดโน้ตไว้" }
         ]
       },
       {
-        pattern: "V辞書形 jisho-kei + のに / N + に",
+        pattern: "V รูปพจนานุกรม + のに / N + に",
         desc: "'ใช้ V/N สำหรับ ~' (โทนกึ่งกลาง — มักบอกว่า เครื่องมือ/เวลาใช้สำหรับ)",
         examples: [
           { jp: "この はさみは かみを 切るのに 使います。", ro: "Kono hasami wa kami o kiru no ni tsukaimasu.", th: "กรรไกรนี้ใช้ตัดกระดาษ" },
@@ -818,7 +818,7 @@ window.N4_UNITS = [
       { type: "fill",
         q: "にほんに 行く ____ に、 おかねを ためて います。 (เพื่อ — ควบคุมได้)",
         answer: ["ため"],
-        explain: "V辞書形 jisho-kei + ために (ควบคุมได้)" },
+        explain: "V รูปพจนานุกรม + ために (ควบคุมได้)" },
       { type: "mcq",
         q: "เลือกความต่างที่ถูกต้อง",
         choices: ["~ために กับ ~ように ใช้ทดแทนกันได้เสมอ", "~ために ใช้กับเป้าหมายควบคุมได้ ~ように ใช้กับเป้าหมายไม่ควบคุม", "~ように ใช้กับการทำให้คนอื่น", "~ために ใช้กับ V-ない เท่านั้น"],
@@ -913,8 +913,8 @@ window.N4_UNITS = [
         ]
       },
       {
-        pattern: "V辞書形 jisho-kei + ところ / V-ている + ところ / V-た + ところ",
-        desc: "บอกช่วงเวลาของการกระทำ: ~辞書形 = กำลังจะ, ~ている = กำลัง, ~た = เพิ่ง",
+        pattern: "V รูปพจนานุกรม + ところ / V-ている + ところ / V-た + ところ",
+        desc: "บอกช่วงเวลาของการกระทำ: ~รูปพจนานุกรม = กำลังจะ, ~ている = กำลัง, ~た = เพิ่ง",
         examples: [
           { jp: "これから 食べる ところです。", ro: "Kore kara taberu tokoro desu.", th: "กำลังจะกินอยู่พอดี" },
           { jp: "いま 食べて いる ところです。", ro: "Ima tabete iru tokoro desu.", th: "กำลังกินอยู่" },
@@ -988,7 +988,7 @@ window.N4_UNITS = [
     summary: "การให้/บังคับให้ทำ, การขออนุญาตทำเอง",
     points: [
       {
-        pattern: "使役形 shieki-kei (godan u→a+せる / ichidan る→させる / する→させる / くる→こさせる)",
+        pattern: "รูปให้ทำ (godan u→a+せる / ichidan る→させる / する→させる / くる→こさせる)",
         desc: "'ให้/บังคับให้ V' — กรรม (ผู้ที่ถูกให้ทำ) ใช้ に (กับกริยา transitive) หรือ を (intransitive)",
         examples: [
           { jp: "ちちは いもうとに やさいを 食べさせます。", ro: "Chichi wa imouto ni yasai o tabesasemasu.", th: "พ่อทำให้น้องสาวกินผัก (transitive — ผู้ถูกให้ทำใช้ に)" },
@@ -1006,14 +1006,14 @@ window.N4_UNITS = [
     ],
     quiz: [
       { type: "fill",
-        q: "使役形 (shieki-kei) ของ よむ คือ ____",
+        q: "รูปให้ทำ ของ よむ คือ ____",
         answer: ["よませる"],
         explain: "godan: よむ → よま + せる" },
       { type: "mcq",
         q: "ちちは おとうと ____ くすりを のませました。",
         choices: ["が", "を", "に", "の"],
         answer: 2,
-        explain: "transitive 使役 (shieki) ผู้ถูกให้ทำใช้ に" },
+        explain: "transitive รูปให้ทำ ผู้ถูกให้ทำใช้ に" },
       { type: "fill",
         q: "ちょっと かんがえ ____ ください。 (ขอ)",
         answer: ["させて"],
@@ -1044,7 +1044,7 @@ window.N4_UNITS = [
         ]
       },
       {
-        pattern: "V受身形 ukemi-kei (เป็นรูป sonkei แบบเบา)",
+        pattern: "V รูปถูกกระทำ (เป็นรูป sonkei แบบเบา)",
         desc: "passive form ใช้เป็น sonkeigo แบบเบา ๆ ก็ได้ (เช่น ข่าว/รายงานทางการ)",
         examples: [
           { jp: "せんせいは いつ にほんへ こられますか。", ro: "Sensei wa itsu Nihon e koraremasu ka.", th: "อาจารย์มาญี่ปุ่นเมื่อไหร่ครับ (こられる = sonkei แบบเบาของ くる)" }
