@@ -2265,6 +2265,8 @@ h3 { margin: 0 0 6px; font-size: 16px; }
 .mm-point:hover { color: var(--accent-strong); border-style: solid; }
 .mm-empty { font-size: 13px; color: var(--muted); padding: 6px 4px; }
 
+/* หัวข้อย่อยเรียงลงด้านบน–ล่างเหมือนหมวดหมู่ ไม่ไหลแนวนอน */
+.mm-points { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
 /* ติ๊ก "จำได้แล้ว" บนหัวข้อในแผนผัง */
 .mm-leaf { display: inline-flex; align-items: center; gap: 6px; }
 .mm-check {
