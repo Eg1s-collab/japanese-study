@@ -58,6 +58,34 @@ window.LessonProgress = (function () {
     save(state);
   }
 
+  /* ความก้าวหน้าของ "โจทย์รวมทั้งหัวข้อใหญ่" (แผนผัง) — เก็บในคลังเดียวกัน
+   * โดยใช้คีย์ namespace "topic::<key>" จึงได้ cloud-sync (per-key LWW) ฟรี
+   * เก็บคะแนนดีที่สุด + ครั้งล่าสุด เพื่อโชว์บนปุ่มและวัดพัฒนาการ */
+  function topicKey(key) { return "topic::" + key; }
+  function getTopicRecord(key) {
+    if (!key) return null;
+    return load().records[topicKey(key)] || null;
+  }
+  function recordTopicResult(key, correct, total) {
+    if (!key || !total) return;
+    const state = load();
+    const k = topicKey(key);
+    const prev = state.records[k] || {};
+    const pct = Math.round((correct / total) * 100);
+    const prevBest = prev.bestPct || 0;
+    const isBest = pct >= prevBest;
+    state.records[k] = {
+      ts: Date.now(),
+      attempts: (prev.attempts || 0) + 1,
+      lastCorrect: correct,
+      lastTotal: total,
+      bestPct: Math.max(prevBest, pct),
+      bestCorrect: isBest ? correct : (prev.bestCorrect != null ? prev.bestCorrect : correct),
+      bestTotal: isBest ? total : (prev.bestTotal != null ? prev.bestTotal : total)
+    };
+    save(state);
+  }
+
   function getForCloud() { return load(); }
   function setFromCloud(state) {
     if (!state || typeof state !== "object") return;
@@ -84,6 +112,7 @@ window.LessonProgress = (function () {
 
   return {
     isDismissed, getRecord, setDismissed, load, save,
+    getTopicRecord, recordTopicResult,
     getForCloud, setFromCloud, mergeForCloud
   };
 })();

@@ -484,6 +484,17 @@ window.GrammarSummaryView = (function () {
         return;
       }
 
+      // แผนผัง: ทำโจทย์รวมทั้งหัวข้อใหญ่ (หมวด/รูปคำ) — โจทย์ผสมจากทุกหัวข้อย่อย
+      const topicQuiz = e.target.closest(".gs-topic-quiz");
+      if (topicQuiz) {
+        e.preventDefault();
+        const node = topicQuiz.closest(".mm-node");
+        if (!node || typeof onOpenQuiz !== "function") return;
+        const spec = buildTopicQuizSpec(node, topicQuiz.dataset.title || "แบบฝึกหัดรวม", topicQuiz.dataset.key);
+        if (spec.refs.length) onOpenQuiz(spec);
+        return;
+      }
+
       // แผนผัง: แตะหัวข้อ → กางเนื้อหาหัวข้อนั้นในแผนผัง
       const mapOpen = e.target.closest(".gs-map-open");
       if (mapOpen) { e.preventDefault(); expandLeafDetail(mapOpen, true); return; }
@@ -676,12 +687,15 @@ window.GrammarSummaryView = (function () {
 
   function mmFormNode(form, levels) {
     let total = 0;
+    const allUids = [];
     const levelNodes = levels.map((levelId) => {
       const lvl = window.LEVELS[levelId] || { units: [] };
       const leaves = [];
       (lvl.units || []).forEach((u) => (u.points || []).forEach((p, i) => {
         if (deriveForms(p.pattern, u.id).indexOf(form.id) !== -1) {
-          leaves.push(mmLeaf(u.id + "#" + i, p.pattern, u.id, p.desc));
+          const uid = u.id + "#" + i;
+          allUids.push(uid);
+          leaves.push(mmLeaf(uid, p.pattern, u.id, p.desc));
         }
       }));
       if (!leaves.length) return "";
@@ -704,6 +718,7 @@ window.GrammarSummaryView = (function () {
           <span class="mm-cat-label">${escapeHtml(form.label)}</span>
           <span class="mm-count">${total}</span>
         </button>
+        ${topicQuizBtnHtml(form.label, allUids, "form:" + form.id)}
         <div class="mm-children mm-cats">${levelNodes.join("")}</div>
       </div>`;
   }
@@ -736,11 +751,14 @@ window.GrammarSummaryView = (function () {
   }
 
   function mmCatNode(cat, levelId, resolveFn) {
+    const uids = [];
     const leaves = (cat.refs || []).flatMap((ref) =>
       (ref[1] || []).map((i) => {
         const r = resolveFn(ref[0], i);
         if (!r) return "";
-        return mmLeaf(ref[0] + "#" + i, r.point.pattern, ref[0], r.point.desc);
+        const uid = ref[0] + "#" + i;
+        uids.push(uid);
+        return mmLeaf(uid, r.point.pattern, ref[0], r.point.desc);
       })
     ).filter(Boolean);
     if (!leaves.length) return "";
@@ -752,15 +770,19 @@ window.GrammarSummaryView = (function () {
           <span class="mm-cat-label">${escapeHtml(cat.label)}</span>
           <span class="mm-count">${leaves.length}</span>
         </button>
+        ${topicQuizBtnHtml(cat.label, uids, levelId + ":cat:" + cat.id)}
         <div class="mm-children mm-points">${leaves.join("")}</div>
       </div>`;
   }
 
   /* fallback: หนึ่ง unit = หนึ่งหมวด เมื่อระดับยังไม่มี categories */
   function mmUnitCatNode(unit, levelId) {
-    const leaves = (unit.points || []).map((p, i) =>
-      mmLeaf(unit.id + "#" + i, p.pattern, unit.id, p.desc)
-    );
+    const uids = [];
+    const leaves = (unit.points || []).map((p, i) => {
+      const uid = unit.id + "#" + i;
+      uids.push(uid);
+      return mmLeaf(uid, p.pattern, unit.id, p.desc);
+    });
     if (!leaves.length) return "";
     return `
       <div class="mm-node mm-cat-node collapsed" data-cat="${escapeAttr(unit.id)}">
@@ -769,6 +791,7 @@ window.GrammarSummaryView = (function () {
           <span class="mm-cat-label">${escapeHtml(shortUnit(unit))}</span>
           <span class="mm-count">${leaves.length}</span>
         </button>
+        ${topicQuizBtnHtml(shortUnit(unit), uids, levelId + ":unit:" + unit.id)}
         <div class="mm-children mm-points">${leaves.join("")}</div>
       </div>`;
   }
@@ -892,6 +915,136 @@ window.GrammarSummaryView = (function () {
       if (best >= 0) (byPoint[best] = byPoint[best] || []).push({ q, qi });
     });
     return (QUIZ_CACHE[unit.id] = byPoint);
+  }
+
+  /* ---------- โจทย์รวมทั้งหัวข้อใหญ่ (mind-map) ----------
+   * รวมข้อสอบของทุกหัวข้อย่อยใต้โหนด (หมวด/รูปคำ) เป็นชุดผสมไว้ทบทวนทีเดียว
+   * ข้อสอบจับคู่กับหัวข้อด้วย quizAssignmentsForUnit() เดียวกับโจทย์รายหัวข้อ */
+  function topicQuizCount(uids) {
+    let n = 0;
+    (uids || []).forEach((uid) => {
+      const r = findPoint(uid);
+      if (!r) return;
+      const byPoint = quizAssignmentsForUnit(r.unit);
+      n += (byPoint[r.idx] || []).length;
+    });
+    return n;
+  }
+
+  function topicQuizBtnHtml(title, uids, key) {
+    const n = topicQuizCount(uids);
+    if (!n) return "";
+    const rec = window.LessonProgress && window.LessonProgress.getTopicRecord
+      ? window.LessonProgress.getTopicRecord(key) : null;
+    const badge = rec && rec.bestPct != null
+      ? `<span class="gs-tq-best ${rec.bestPct >= 80 ? "good" : ""}" title="คะแนนดีที่สุดที่เคยทำได้">✓ ${rec.bestPct}%</span>`
+      : "";
+    return `<button class="gs-topic-quiz" type="button"
+      data-title="${escapeAttr(title)}" data-key="${escapeAttr(key || "")}"
+      title="ทำโจทย์ผสมทั้งหัวข้อนี้ไว้ทบทวน">
+      <span class="gs-tq-ico" aria-hidden="true">問</span>ทำโจทย์รวม
+      <span class="gs-tq-n">${n}</span>${badge}
+    </button>`;
+  }
+
+  /* คลังคำแปลไทยต่อระดับ (ตัวลวงสำหรับโจทย์ "เลือกคำแปล") */
+  const THAI_POOL_CACHE = {};
+  function thaiPoolForLevels(levels) {
+    const key = (levels || []).slice().sort().join(",");
+    if (THAI_POOL_CACHE[key]) return THAI_POOL_CACHE[key];
+    const pool = [];
+    const seen = new Set();
+    (levels || []).forEach((lid) => {
+      const lvl = (window.LEVELS || {})[lid] || { units: [] };
+      (lvl.units || []).forEach((u) => (u.points || []).forEach((p) =>
+        (p.examples || []).forEach((ex) => {
+          const th = (ex.th || "").trim();
+          if (th && !seen.has(th)) { seen.add(th); pool.push(th); }
+        })));
+    });
+    return (THAI_POOL_CACHE[key] = pool);
+  }
+
+  /* สร้างโจทย์ทบทวนเพิ่มจากตัวอย่างประโยคจริงของหัวข้อ — แบบ "เลือกคำแปล"
+   * เนื้อหา authored ทั้งหมด (ประโยค + คำแปลไทย) จึงถูกต้องเสมอ
+   * ตัวลวงดึงคำแปลไทยของประโยคอื่นในกลุ่ม/ระดับเดียวกันเพื่อให้น่าสับสนพอควร */
+  function genExampleQuestions(r, groupThai, levelPool) {
+    const out = [];
+    const pat = String(r.point.pattern || "").split(/\s[—\(（]/)[0].trim();
+    (r.point.examples || []).forEach((ex) => {
+      const jp = (ex.jp || "").trim();
+      const th = (ex.th || "").trim();
+      if (!jp || !th) return;
+      const distractors = pickDistractors(th, groupThai, levelPool, 3);
+      if (distractors.length < 2) return; // ตัวเลือกน้อยเกินไป ข้าม
+      const choices = [th].concat(distractors);
+      out.push({
+        type: "mcq",
+        q: "เลือกคำแปลของประโยคนี้:\n" + jp + (ex.ro ? "\n(" + ex.ro + ")" : ""),
+        choices,
+        answer: 0,
+        explain: "ไวยากรณ์: " + pat + (th ? "\nคำแปล: " + th : "")
+      });
+    });
+    return out;
+  }
+
+  function pickDistractors(correct, groupThai, levelPool, n) {
+    const picked = [];
+    const used = new Set([correct]);
+    const draw = (pool) => {
+      const bag = pool.filter((t) => !used.has(t));
+      for (let i = bag.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const t = bag[i]; bag[i] = bag[j]; bag[j] = t;
+      }
+      for (let k = 0; k < bag.length && picked.length < n; k++) {
+        used.add(bag[k]); picked.push(bag[k]);
+      }
+    };
+    draw(groupThai);              // ตัวลวงในกลุ่มก่อน (ใกล้เคียงกว่า)
+    if (picked.length < n) draw(levelPool); // เติมจากทั้งระดับถ้ายังไม่พอ
+    return picked;
+  }
+
+  /* รวบรวมชุดโจทย์ผสมจากใบทั้งหมดใต้โหนด: โจทย์จริง + โจทย์จากตัวอย่าง
+   * (เรียงสุ่มเพื่อทบทวนแบบคละ) */
+  function buildTopicQuizSpec(node, title, key) {
+    const refs = [];
+    const seen = new Set();
+    const points = [];
+    const levels = new Set();
+    node.querySelectorAll(".mm-leaf .gs-map-open").forEach((pt) => {
+      const r = findPoint(pt.dataset.target);
+      if (!r) return;
+      points.push(r);
+      levels.add(r.level);
+      const byPoint = quizAssignmentsForUnit(r.unit);
+      (byPoint[r.idx] || []).forEach((m) => {
+        const k = r.level + "|" + r.unit.id + "|" + m.qi;
+        if (seen.has(k)) return;
+        seen.add(k);
+        refs.push({ level: r.level, unitId: r.unit.id, qIndex: m.qi, q: m.q, unitTitle: r.unit.title });
+      });
+    });
+    // โจทย์ทบทวนจากตัวอย่างประโยค (qIndex = null → ไม่ยุ่งกับ wrong-list/ดาว)
+    const groupThai = [];
+    const gSeen = new Set();
+    points.forEach((r) => (r.point.examples || []).forEach((ex) => {
+      const th = (ex.th || "").trim();
+      if (th && !gSeen.has(th)) { gSeen.add(th); groupThai.push(th); }
+    }));
+    const levelPool = thaiPoolForLevels([...levels]);
+    points.forEach((r) => {
+      genExampleQuestions(r, groupThai, levelPool).forEach((q) => {
+        refs.push({ level: r.level, unitId: r.unit.id, qIndex: null, q, unitTitle: r.unit.title, gen: true });
+      });
+    });
+    for (let i = refs.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const t = refs[i]; refs[i] = refs[j]; refs[j] = t;
+    }
+    return { topic: true, title, key: key || "", refs };
   }
 
   /* ---------- ข้อสอบตามหัวข้อในแผนผัง (interactive, พับเก็บได้) ---------- */

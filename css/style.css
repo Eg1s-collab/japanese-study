@@ -2258,6 +2258,33 @@ h3 { margin: 0 0 6px; font-size: 16px; }
   background: rgba(0,0,0,.28); border: 1px solid var(--line);
   border-radius: 999px; padding: 1px 8px;
 }
+/* ปุ่ม "ทำโจทย์รวม" บนหัวข้อใหญ่ในแผนผัง — นั่งข้าง label ของหมวด/รูปคำ */
+.gs-topic-quiz {
+  display: inline-flex; align-items: center; gap: 5px;
+  margin: 4px 0 4px 6px; vertical-align: middle; cursor: pointer;
+  font-family: inherit; font-size: 11.5px; font-weight: 700;
+  color: var(--accent-strong); white-space: nowrap;
+  border: 1px solid var(--accent); border-radius: 999px;
+  background: var(--accent-soft); padding: 5px 11px;
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
+  transition: background .14s ease, color .14s ease, transform .08s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.gs-topic-quiz:hover { background: var(--accent); color: #fff; }
+.gs-topic-quiz:hover .gs-tq-n { background: rgba(255,255,255,.22); }
+.gs-topic-quiz:active { transform: translateY(1px); }
+.gs-tq-ico { font-size: 11px; line-height: 1; }
+.gs-tq-n {
+  font-size: 10.5px; font-weight: 700;
+  background: rgba(0,0,0,.2); border-radius: 999px; padding: 0 6px;
+}
+.gs-tq-best {
+  font-size: 10.5px; font-weight: 700; line-height: 1;
+  color: var(--muted); border-radius: 999px; padding: 1px 6px;
+  background: var(--glass-soft, rgba(0,0,0,.06));
+}
+.gs-tq-best.good { color: #1a7f37; background: rgba(26,127,55,.14); }
+.gs-topic-quiz:hover .gs-tq-best { color: #fff; background: rgba(255,255,255,.22); }
 .mm-point {
   font-size: 13px; font-weight: 600; color: var(--accent);
   border-style: dashed;

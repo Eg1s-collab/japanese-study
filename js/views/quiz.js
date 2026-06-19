@@ -7,6 +7,12 @@
  */
 window.QuizView = (function () {
   const DAILY = "__daily__";
+  const TOPIC = "__topic__";
+
+  /* ชุดโจทย์ผสม "ทั้งหัวข้อใหญ่" ที่ส่งมาจากแผนผัง (mind-map) — เก็บไว้นอก URL
+   * เพราะมีหลายข้อข้ามได้หลายระดับ; ถ้า refresh แล้วหาย จะตกไปหน้าเลือกแทน */
+  let topicSpec = null;
+  function setTopic(spec) { topicSpec = spec; }
 
   function render(level, target, onPick) {
     const lv = window.LEVELS[level];
@@ -14,6 +20,7 @@ window.QuizView = (function () {
 
     if (!target) return renderSelector(level, onPick);
     if (target === DAILY) return renderDaily(level, onPick);
+    if (target === TOPIC) return renderTopicQuiz(level, onPick);
     return renderUnitQuiz(level, target, onPick);
   }
 
@@ -297,6 +304,74 @@ window.QuizView = (function () {
     });
   }
 
+  /* ---------- โหมดโจทย์รวมทั้งหัวข้อใหญ่ (จากแผนผัง) ---------- */
+  function renderTopicQuiz(level, onPick) {
+    const spec = topicSpec;
+    const root = document.createElement("div");
+    // ไม่มี spec (เช่นเข้าตรง ๆ / refresh) → ตกไปหน้าเลือก unit
+    if (!spec || !spec.refs || !spec.refs.length) return renderSelector(level, onPick);
+    const refs = spec.refs;
+
+    runner({
+      root,
+      level,
+      title: spec.title || "แบบฝึกหัดรวม",
+      total: refs.length,
+      initialI: 0,
+      getMeta: (i) => {
+        const ref = refs[i];
+        if (!ref || !ref.q) return null;
+        return {
+          q: ref.q, unitTitle: ref.unitTitle,
+          unitId: ref.unitId, qIndex: ref.qIndex, level: ref.level
+        };
+      },
+      isAnswered: () => false,
+      getStoredAnswer: () => null,
+      recordAnswer: (i, payload) => {
+        const DS = window.DailyStorage;
+        const ref = refs[i];
+        if (DS && ref) {
+          if (payload.correct) DS.clearWrong(ref.level, ref.unitId, ref.qIndex);
+          else DS.markWrong(ref.level, ref.unitId, ref.qIndex);
+        }
+      },
+      onFinish: (state) => renderTopicDone(root, level, spec, onPick, state),
+      onPickAnother: () => onPick(null),
+      mode: "topic"
+    });
+
+    return root;
+  }
+
+  function renderTopicDone(root, level, spec, onPick, state) {
+    const total = spec.refs.length;
+    const pct = total > 0 ? Math.round((state.correct / total) * 100) : 0;
+    // บันทึกความก้าวหน้า (คะแนนดีที่สุด) ของหัวข้อใหญ่นี้
+    if (window.LessonProgress && window.LessonProgress.recordTopicResult) {
+      window.LessonProgress.recordTopicResult(spec.key, state.correct, total);
+    }
+    root.innerHTML = `
+      <div class="score-card">
+        <div>
+          <h2 style="margin:0;">จบแบบฝึกหัดรวม!</h2>
+          <p class="subtle">${escapeHtml(spec.title || "")}</p>
+          ${pct >= 80 ? `<p class="subtle" style="margin-top:4px;color:var(--ok);">เก่งมาก! คะแนน ${pct}%</p>` : ""}
+        </div>
+        <div class="score-num">${state.correct} / ${total}</div>
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="againBtn">ทำใหม่</button>
+        <button class="btn ghost" id="backBtn">← กลับเมนู</button>
+      </div>
+    `;
+    root.querySelector("#againBtn").addEventListener("click", () => {
+      const fresh = renderTopicQuiz(level, onPick);
+      root.replaceWith(fresh);
+    });
+    root.querySelector("#backBtn").addEventListener("click", () => onPick(null));
+  }
+
   /* ---------- runner: ใช้ร่วมระหว่าง unit quiz กับ daily ---------- */
   function runner(cfg) {
     const {
@@ -331,7 +406,9 @@ window.QuizView = (function () {
       }
       const q = meta.q;
       const isLast = state.i === total - 1;
-      const bookmarked = window.Storage && window.Storage.isBookmarked(level, meta.unitId, meta.qIndex);
+      // โจทย์ที่สร้างจากตัวอย่าง (qIndex = null) บันทึกไว้ทวนไม่ได้ → ซ่อนดาว
+      const canStar = meta.qIndex != null;
+      const bookmarked = canStar && window.Storage && window.Storage.isBookmarked(meta.level || level, meta.unitId, meta.qIndex);
       const stored = getStoredAnswer(state.i);
       const lockedView = !!stored;
 
@@ -361,8 +438,9 @@ window.QuizView = (function () {
         `;
       }
 
+      const showSub = mode === "daily" || mode === "topic";
       const pct = Math.round((state.i / total) * 100);
-      const subTitle = mode === "daily" && meta.unitTitle
+      const subTitle = showSub && meta.unitTitle
         ? ` · <span class="qsub">${escapeHtml(meta.unitTitle)}</span>`
         : "";
       const priorityTag = mode === "daily" && typeof meta.priority === "number"
@@ -372,18 +450,18 @@ window.QuizView = (function () {
       root.innerHTML = `
         <div class="qhead">
           <h2 class="qtitle">${escapeHtml(title)}</h2>
-          ${mode === "daily" ? `<button class="btn ghost btn-sm" id="exitDaily">← กลับเมนู</button>` : ""}
+          ${showSub ? `<button class="btn ghost btn-sm" id="exitDaily">← กลับเมนู</button>` : ""}
         </div>
         <div class="progress" title="ความก้าวหน้า"><div class="bar" style="width:${pct}%"></div></div>
         <div class="qmeta">
           <span class="qprog">ข้อ ${state.i + 1} / ${total}${subTitle} · คะแนน ${state.correct}/${state.i}</span>
           <div class="qmeta-right">
             ${priorityTag}
-            <button class="star ${bookmarked ? "on" : ""}" id="starBtn" title="บันทึกข้อนี้ไว้ทวน">★</button>
+            ${canStar ? `<button class="star ${bookmarked ? "on" : ""}" id="starBtn" title="บันทึกข้อนี้ไว้ทวน">★</button>` : ""}
           </div>
         </div>
         <div class="card">
-          <h3>${escapeHtml(q.q)}</h3>
+          <h3 style="white-space:pre-line;">${escapeHtml(q.q)}</h3>
           <div id="qBody">${body}</div>
           <div id="fb"></div>
           <div class="btn-row">
@@ -396,14 +474,16 @@ window.QuizView = (function () {
       if (exitBtn) exitBtn.addEventListener("click", () => onPickAnother());
 
       const starBtn = root.querySelector("#starBtn");
-      starBtn.addEventListener("click", (e) => {
-        if (!window.Storage) return;
-        const on = window.Storage.toggle(level, meta.unitId, meta.qIndex, {
-          unitTitle: meta.unitTitle,
-          q
+      if (starBtn) {
+        starBtn.addEventListener("click", (e) => {
+          if (!window.Storage) return;
+          const on = window.Storage.toggle(meta.level || level, meta.unitId, meta.qIndex, {
+            unitTitle: meta.unitTitle,
+            q
+          });
+          e.currentTarget.classList.toggle("on", on);
         });
-        e.currentTarget.classList.toggle("on", on);
-      });
+      }
 
       const nextBtn = root.querySelector("#nextBtn");
       nextBtn.addEventListener("click", () => {
@@ -564,5 +644,5 @@ window.QuizView = (function () {
   }
   function escapeAttr(s) { return escapeHtml(s); }
 
-  return { render };
+  return { render, setTopic };
 })();

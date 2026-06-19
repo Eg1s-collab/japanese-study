@@ -150,7 +150,15 @@
         );
       }
     } else if (state.tab === "grammar") {
-      node = window.GrammarSummaryView.render(state.level, (unitId) => go("units", unitId), (unitId) => go("quiz", unitId));
+      node = window.GrammarSummaryView.render(state.level, (unitId) => go("units", unitId), (arg) => {
+        // arg เป็น object = โจทย์รวมทั้งหัวข้อใหญ่จากแผนผัง; เป็น string = unit เดียว
+        if (arg && typeof arg === "object") {
+          window.QuizView.setTopic(arg);
+          go("quiz", "__topic__");
+        } else {
+          go("quiz", arg);
+        }
+      });
     } else if (state.tab === "quiz") {
       node = window.QuizView.render(state.level, state.quizUnit, (unitId) => go("quiz", unitId));
     } else if (state.tab === "particles") {
