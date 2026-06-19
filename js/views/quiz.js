@@ -162,6 +162,8 @@ window.QuizView = (function () {
       isAnswered: (i) => !!session.answers[i],
       getStoredAnswer: (i) => session.answers[i],
       recordAnswer: (i, payload) => {
+        // mirror into the captured closure so isAnswered/getStoredAnswer stay in sync
+        session.answers[i] = payload;
         DS.updateSession(level, (s) => {
           s.answers[i] = payload;
           s.i = Math.min(s.questions.length, Math.max(s.i, i + 1));

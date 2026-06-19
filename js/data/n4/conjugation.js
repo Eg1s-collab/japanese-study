@@ -126,6 +126,12 @@ window.N4_VERBS = [
   { dict: "もうしこむ", reading: "moushikomu", group: 1, meaning: "สมัคร",
     forms: { dict: "もうしこむ", masu: "もうしこみます", masen: "もうしこみません", mashita: "もうしこみました", te: "もうしこんで", nai: "もうしこまない", ta: "もうしこんだ", tai: "もうしこみたい",
              pot: "もうしこめる", vol: "もうしこもう", ba: "もうしこめば", imp: "もうしこめ", pass: "もうしこまれる", caus: "もうしこませる" } },
+  { dict: "しかる", reading: "shikaru", group: 1, meaning: "ดุ",
+    forms: { dict: "しかる", masu: "しかります", masen: "しかりません", mashita: "しかりました", te: "しかって", nai: "しからない", ta: "しかった", tai: "しかりたい",
+             pot: "しかれる", vol: "しかろう", ba: "しかれば", imp: "しかれ", pass: "しかられる", caus: "しからせる" } },
+  { dict: "つたわる", reading: "tsutawaru", group: 1, meaning: "ถ่ายทอด (ออโต้)",
+    forms: { dict: "つたわる", masu: "つたわります", masen: "つたわりません", mashita: "つたわりました", te: "つたわって", nai: "つたわらない", ta: "つたわった", tai: "つたわりたい",
+             pot: "つたわれる", vol: "つたわろう", ba: "つたわれば", imp: "つたわれ", pass: "つたわられる", caus: "つたわらせる" } },
 
   // -- Ichidan (group 2) --
   { dict: "しらべる", reading: "shiraberu", group: 2, meaning: "ค้นคว้า / ตรวจสอบ",
@@ -143,12 +149,6 @@ window.N4_VERBS = [
   { dict: "ほめる", reading: "homeru", group: 2, meaning: "ชม",
     forms: { dict: "ほめる", masu: "ほめます", masen: "ほめません", mashita: "ほめました", te: "ほめて", nai: "ほめない", ta: "ほめた", tai: "ほめたい",
              pot: "ほめられる", vol: "ほめよう", ba: "ほめれば", imp: "ほめろ", pass: "ほめられる", caus: "ほめさせる" } },
-  { dict: "しかる", reading: "shikaru", group: 1, meaning: "ดุ",
-    forms: { dict: "しかる", masu: "しかります", masen: "しかりません", mashita: "しかりました", te: "しかって", nai: "しからない", ta: "しかった", tai: "しかりたい",
-             pot: "しかれる", vol: "しかろう", ba: "しかれば", imp: "しかれ", pass: "しかられる", caus: "しからせる" } },
-  { dict: "つたわる", reading: "tsutawaru", group: 1, meaning: "ถ่ายทอด (ออโต้)",
-    forms: { dict: "つたわる", masu: "つたわります", masen: "つたわりません", mashita: "つたわりました", te: "つたわって", nai: "つたわらない", ta: "つたわった", tai: "つたわりたい",
-             pot: "つたわれる", vol: "つたわろう", ba: "つたわれば", imp: "つたわれ", pass: "つたわられる", caus: "つたわらせる" } },
 
   // -- Irregular (group 3) — N4 compounds --
   { dict: "しっぱいする", reading: "shippai-suru", group: 3, meaning: "ล้มเหลว",

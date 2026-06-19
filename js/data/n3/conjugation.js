@@ -28,6 +28,8 @@ window.N3_VERBS = [
   { dict: "ふくむ", reading: "fukumu", group: 1, meaning: "บรรจุ / รวมถึง",
     forms: { dict: "ふくむ", masu: "ふくみます", masen: "ふくみません", mashita: "ふくみました", te: "ふくんで", nai: "ふくまない", ta: "ふくんだ", tai: "ふくみたい",
              pot: "ふくめる", vol: "ふくもう", ba: "ふくめば", imp: "ふくめ", pass: "ふくまれる", caus: "ふくませる" } },
+
+  // === คำศัพท์ N3 ใหม่ — Ichidan (group 2) ===
   { dict: "あらわれる", reading: "arawareru", group: 2, meaning: "ปรากฏ",
     forms: { dict: "あらわれる", masu: "あらわれます", masen: "あらわれません", mashita: "あらわれました", te: "あらわれて", nai: "あらわれない", ta: "あらわれた", tai: "あらわれたい",
              pot: "あらわれられる", vol: "あらわれよう", ba: "あらわれれば", imp: "あらわれろ", pass: "あらわれられる", caus: "あらわれさせる" } },

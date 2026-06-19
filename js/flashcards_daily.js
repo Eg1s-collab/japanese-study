@@ -34,9 +34,14 @@ window.FlashcardsDaily = (function () {
   const UNKNOWN_RATIO = 0.8;
 
   function thailandDate() {
-    return window.FlashcardsStreak
-      ? window.FlashcardsStreak.thailandDate()
-      : new Date().toISOString().slice(0, 10);
+    if (window.FlashcardsStreak) return window.FlashcardsStreak.thailandDate();
+    try {
+      return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" });
+    } catch (e) {
+      const now = new Date();
+      const th = new Date(now.getTime() + now.getTimezoneOffset() * 60000 + 7 * 3600 * 1000);
+      return th.toISOString().slice(0, 10);
+    }
   }
   function clampCount(n) {
     const v = Math.floor(Number(n));
