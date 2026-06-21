@@ -21,7 +21,7 @@ window.FlashcardsView = (function () {
     folderId: null,
     deckId: null,
     cardsOpts: { shuffle: false, swap: false, starredOnly: false, autoSpeak: false },
-    learnOpts: { swap: false, starredOnly: false, autoSpeak: false },
+    learnOpts: { swap: false, starredOnly: false, autoSpeak: false, autoAdvance: true },
     dailyOpts: { swap: false, autoSpeak: false },
     reviewLearnOpts: { swap: false, autoSpeak: false },
     // When set, "reviewLearn" screen is active: a Learn detour over a
@@ -1828,6 +1828,7 @@ window.FlashcardsView = (function () {
           <label class="fc-toggle"><input type="checkbox" data-opt="swap" ${state.learnOpts.swap ? "checked" : ""}/> สลับด้าน</label>
           <label class="fc-toggle"><input type="checkbox" data-opt="starredOnly" ${state.learnOpts.starredOnly ? "checked" : ""}/> ดาวเท่านั้น</label>
           <label class="fc-toggle"><input type="checkbox" data-opt="autoSpeak" ${state.learnOpts.autoSpeak ? "checked" : ""}/> 🔊 อ่านอัตโนมัติ</label>
+          <label class="fc-toggle"><input type="checkbox" data-opt="autoAdvance" ${state.learnOpts.autoAdvance ? "checked" : ""}/> ⏭️ เลื่อนอัตโนมัติ</label>
         </div>
       `;
     }
@@ -1838,6 +1839,8 @@ window.FlashcardsView = (function () {
           const opt = cb.dataset.opt;
           if (opt === "starredOnly") {
             resetRound();
+          } else if (opt === "autoAdvance") {
+            if (!cb.checked) clearAutoAdvance();
           } else if (opt === "autoSpeak") {
             if (!cb.checked) {
               window.speechSynthesis && window.speechSynthesis.cancel();
@@ -2033,7 +2036,9 @@ window.FlashcardsView = (function () {
           }
           batchPos += 1;
           nextBtn.style.display = "inline-block";
-          autoAdvanceTimer = setTimeout(advance, wasCorrect ? 700 : 1800);
+          if (state.learnOpts.autoAdvance) {
+            autoAdvanceTimer = setTimeout(advance, wasCorrect ? 700 : 1800);
+          }
         });
       });
       nextBtn.addEventListener("click", advance);
