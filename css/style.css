@@ -2592,7 +2592,217 @@ h3 { margin: 0 0 6px; font-size: 16px; }
 
 .qmeta-right .daily-pill + .daily-pill { margin-left: 6px; }
 
+/* Single-character (四字熟語) cards: bigger, squarer than word cards */
+.arr-card-kanji {
+  min-width: 3ch;
+  font-size: 30px;
+  line-height: 1;
+  padding: 12px 14px;
+}
+
 @media (max-width: 540px) {
   .arr-card { font-size: 17px; padding: 9px 12px; }
+  .arr-card-kanji { font-size: 26px; padding: 10px 12px; }
   .arr-meaning-th { font-size: 16px; }
+}
+
+/* ===== 四字熟語 chapter menu + level progress ===== */
+.yoji-lvl-pill {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 34px; padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px; font-weight: 800; letter-spacing: .3px;
+  color: #fff; border: 1px solid transparent; white-space: nowrap;
+}
+.yoji-lvl-n5 { background: linear-gradient(135deg, #34a853, #2b8a46); }
+.yoji-lvl-n4 { background: linear-gradient(135deg, #2aa9b6, #1f8892); }
+.yoji-lvl-n3 { background: linear-gradient(135deg, #7b74e0, #5f57c9); }
+.yoji-lvl-n2 { background: linear-gradient(135deg, #e0913a, #c9761f); }
+.yoji-lvl-n1 { background: linear-gradient(135deg, #e05a6b, #c93a4d); }
+
+.yoji-overall { margin-bottom: 16px; }
+.yoji-overall-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+}
+.yoji-overall-frac { font-weight: 700; font-size: 16px; }
+
+/* shared thin progress track (level + overall) */
+.yoji-level-barwrap {
+  height: 7px; border-radius: 999px; overflow: hidden;
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  margin-top: 8px;
+}
+.yoji-level-barwrap.big { height: 12px; margin-top: 10px; }
+.yoji-level-bar {
+  display: block; height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+  transition: width .3s ease;
+}
+
+.yoji-levels { display: flex; flex-direction: column; gap: 12px; }
+.yoji-level {
+  border: 1px solid var(--glass-border); border-radius: 14px;
+  background: var(--glass-bg); padding: 12px 14px;
+}
+.yoji-level.open { border-color: var(--accent); }
+.yoji-level-head {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  background: none; border: 0; padding: 0; cursor: pointer; color: inherit;
+  text-align: left;
+}
+.yoji-level-meta { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-width: 0; }
+.yoji-level-title { font-weight: 700; font-size: 15px; }
+.yoji-level-sub { font-size: 12.5px; color: var(--muted); }
+.yoji-level-right { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.yoji-level-pct { font-weight: 700; font-size: 14px; color: var(--accent-strong); }
+.yoji-level-chev { transition: transform .2s ease; opacity: .7; }
+.yoji-level.open .yoji-level-chev { transform: rotate(180deg); }
+
+.yoji-chap-grid {
+  display: grid; gap: 10px; margin-top: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+}
+.yoji-chap {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 10px 12px; border-radius: 12px; cursor: pointer;
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  color: inherit; font-family: inherit;
+  transition: background .15s ease, border-color .15s ease, transform .08s ease;
+}
+.yoji-chap:hover { border-color: var(--accent); background: var(--glass-bg-strong); }
+.yoji-chap:active { transform: translateY(1px); }
+.yoji-chap.is-full { border-color: rgba(110, 231, 160, .55); background: var(--ok-soft); }
+.yoji-chap-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.yoji-chap-no { font-weight: 700; font-size: 14px; }
+.yoji-chap-frac { font-size: 12px; color: var(--muted); }
+.yoji-chap-check { color: var(--ok); font-weight: 800; }
+.yoji-chap-bar {
+  display: block; height: 5px; border-radius: 999px; overflow: hidden;
+  background: rgba(255,255,255,.08);
+}
+.yoji-chap-bar > span {
+  display: block; height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+}
+.yoji-chap.is-full .yoji-chap-bar > span {
+  background: linear-gradient(90deg, #6ee7a0, #34a853);
+}
+/* multi-select state (flash/choice chapter picker) */
+.yoji-chap { position: relative; }
+.yoji-chap.is-selected {
+  border-color: var(--accent);
+  background: var(--glass-bg-strong);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+.yoji-chap-sel {
+  position: absolute; top: 6px; right: 8px;
+  width: 16px; height: 16px; border-radius: 999px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; line-height: 1;
+  color: #fff; background: var(--accent);
+  opacity: 0; transform: scale(.6); transition: opacity .12s ease, transform .12s ease;
+}
+.yoji-chap.is-selected .yoji-chap-sel { opacity: 1; transform: scale(1); }
+
+/* ---- study screen (preview all answers before the exercise) ---- */
+.yoji-study-list {
+  list-style: none;
+  margin: 14px 0 4px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+.yoji-study-card {
+  background: var(--surface, rgba(255,255,255,0.04));
+  border: 1px solid var(--border, rgba(255,255,255,0.08));
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+.yoji-study-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.yoji-study-k {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+.yoji-study-tags { display: inline-flex; align-items: center; gap: 6px; }
+.yoji-study-r {
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--accent, #f0a);
+  opacity: 0.9;
+}
+.yoji-study-t {
+  margin-top: 4px;
+  font-size: 14px;
+  line-height: 1.5;
+  opacity: 0.85;
+}
+
+/* ---- per-level practice mode buttons ---- */
+.yoji-mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 10px;
+}
+.yoji-mode-btn {
+  flex: 1 1 auto;
+  min-width: 120px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border, rgba(255,255,255,0.12));
+  background: var(--glass-bg, rgba(255,255,255,0.05));
+  color: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, transform .05s;
+}
+.yoji-mode-btn:hover { background: var(--glass-bg-strong); border-color: var(--accent); }
+.yoji-mode-btn:active { transform: translateY(1px); }
+.yoji-chap-caption { font-size: 12px; margin: 2px 0 6px; }
+
+/* ---- flashcard ---- */
+.yoji-fc-card {
+  display: block;
+  width: 100%;
+  min-height: 200px;
+  margin: 16px 0;
+  padding: 28px 20px;
+  border-radius: 18px;
+  border: 1px solid var(--border, rgba(255,255,255,0.1));
+  background: var(--surface, rgba(255,255,255,0.04));
+  color: inherit;
+  cursor: pointer;
+  text-align: center;
+}
+.yoji-fc-face { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+.yoji-fc-k { font-size: 42px; font-weight: 700; letter-spacing: 4px; }
+.yoji-fc-r { font-size: 20px; color: var(--accent, #f0a); }
+.yoji-fc-t { font-size: 16px; line-height: 1.6; opacity: 0.9; }
+.yoji-fc-hint { font-size: 12px; }
+
+/* ---- multiple choice ---- */
+.yoji-choice-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+  padding: 8px 0 4px;
+}
+.yoji-choice-r { font-size: 16px; }
+.yoji-choices { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+
+@media (max-width: 540px) {
+  .yoji-chap-grid { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); }
+  .yoji-level-title { font-size: 14px; }
+  .yoji-study-list { grid-template-columns: 1fr; }
+  .yoji-fc-k { font-size: 36px; }
 }

@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="日本語" />
-  <link rel="stylesheet" href="css/style.css?v=20260619a" />
+  <link rel="stylesheet" href="css/style.css?v=20260717e" />
 </head>
 <body>
   <div class="ambient" aria-hidden="true">
@@ -96,6 +96,10 @@
       <span class="tab-jp">並</span>
       <span class="tab-label">เรียงประโยค</span>
     </button>
+    <button class="tab" data-tab="yojijukugo" role="tab" aria-selected="false" tabindex="-1">
+      <span class="tab-jp">熟</span>
+      <span class="tab-label">สี่พยางค์</span>
+    </button>
     <button class="tab" data-tab="bookmarks" role="tab" aria-selected="false" tabindex="-1">
       <span class="tab-jp">星</span>
       <span class="tab-label">ทวนซ้ำ</span>
@@ -118,6 +122,7 @@
   <script src="js/data/n3/videos.js?v=20260516j"></script>
   <script src="js/data/particles.js?v=20260522g"></script>
   <script src="js/data/sentences.js?v=20260618f"></script>
+  <script src="js/data/yojijukugo.js?v=20260717b"></script>
   <script src="js/data/grammar-map.js?v=20260618f"></script>
   <script src="js/data/index.js?v=20260516j"></script>
   <script src="js/storage.js?v=20260516j"></script>
@@ -127,6 +132,7 @@
   <script src="js/flashcards_daily.js?v=20260522f"></script>
   <script src="js/dictation_daily.js?v=20260604a"></script>
   <script src="js/lesson_progress.js?v=20260619a"></script>
+  <script src="js/yojijukugo_progress.js?v=20260717a"></script>
   <script src="js/grammar_known.js?v=20260618a"></script>
   <script src="js/daily_storage.js?v=20260516p"></script>
   <script src="js/kana_keypad.js?v=20260516j"></script>
@@ -138,13 +144,14 @@
   <script src="js/views/flashcards.js?v=20260605b"></script>
   <script src="js/views/dictation.js?v=20260605b"></script>
   <script src="js/views/arrange.js?v=20260523b"></script>
+  <script src="js/views/yojijukugo.js?v=20260717j"></script>
   <script src="js/views/bookmarks.js?v=20260516j"></script>
-  <script src="js/app.js?v=20260619a"></script>
-  <script type="module" src="js/cloud_sync.js?v=20260618a"></script>
+  <script src="js/app.js?v=20260717a"></script>
+  <script type="module" src="js/cloud_sync.js?v=20260717b"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("sw.js?v=20260619a").catch((e) => {
+        navigator.serviceWorker.register("sw.js?v=20260717j").catch((e) => {
           console.warn("[sw] registration failed", e);
         });
       });

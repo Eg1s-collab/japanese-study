@@ -46,6 +46,7 @@ const BM_KEY = "jp_grammar_bookmarks_v1";
 const CJ_KEY = "jp_conjugation_progress_v1";
 const FC_KEY = "jp_flashcards_v1";
 const LP_KEY = "jp_lesson_progress_v1";
+const YJ_KEY = "jp_yoji_progress_v1";
 const GK_KEY = "jp_grammar_known_v1";
 const DL_KEY = "jp_daily_v1";
 const FS_KEY = "jp_flashcards_streak_v1";
@@ -139,6 +140,7 @@ async function pullAndMerge() {
     const localCj = JSON.parse(localStorage.getItem(CJ_KEY) || "{}");
     const localFc = JSON.parse(localStorage.getItem(FC_KEY) || "null");
     const localLp = JSON.parse(localStorage.getItem(LP_KEY) || "null");
+    const localYj = JSON.parse(localStorage.getItem(YJ_KEY) || "null");
     const localGk = JSON.parse(localStorage.getItem(GK_KEY) || "null");
     const localDl = JSON.parse(localStorage.getItem(DL_KEY) || "null");
     const localFs = JSON.parse(localStorage.getItem(FS_KEY) || "null");
@@ -164,6 +166,12 @@ async function pullAndMerge() {
     const mergedLp = window.LessonProgress
       ? window.LessonProgress.mergeForCloud(localLp, cloudLp)
       : (cloudLp || localLp || { records: {}, updatedAt: 0 });
+
+    // Yojijukugo learned-idioms: per-key LWW on ts
+    const cloudYj = cloud && cloud.yojijukugoProgress ? cloud.yojijukugoProgress : null;
+    const mergedYj = window.YojijukugoProgress
+      ? window.YojijukugoProgress.mergeForCloud(localYj, cloudYj)
+      : (cloudYj || localYj || { records: {}, updatedAt: 0 });
 
     // Grammar "จำได้แล้ว" ticks: per-uid LWW on ts
     const cloudGk = cloud && cloud.grammarKnown ? cloud.grammarKnown : null;
@@ -199,6 +207,7 @@ async function pullAndMerge() {
     localStorage.setItem(CJ_KEY, JSON.stringify(mergedCj));
     localStorage.setItem(FC_KEY, JSON.stringify(mergedFc));
     localStorage.setItem(LP_KEY, JSON.stringify(mergedLp));
+    localStorage.setItem(YJ_KEY, JSON.stringify(mergedYj));
     localStorage.setItem(GK_KEY, JSON.stringify(mergedGk));
     localStorage.setItem(DL_KEY, JSON.stringify(mergedDl));
     localStorage.setItem(FS_KEY, JSON.stringify(mergedFs));
@@ -219,6 +228,7 @@ async function pullAndMerge() {
       conjugation: mergedCj,
       flashcards: mergedFc,
       lessonProgress: mergedLp,
+      yojijukugoProgress: mergedYj,
       grammarKnown: mergedGk,
       daily: mergedDl,
       flashcardsStreak: mergedFs,
@@ -247,6 +257,7 @@ async function pushNow() {
       conjugation: JSON.parse(localStorage.getItem(CJ_KEY) || "{}"),
       flashcards: JSON.parse(localStorage.getItem(FC_KEY) || "null") || { folders: [], decks: [], updatedAt: 0 },
       lessonProgress: JSON.parse(localStorage.getItem(LP_KEY) || "null") || { records: {}, updatedAt: 0 },
+      yojijukugoProgress: JSON.parse(localStorage.getItem(YJ_KEY) || "null") || { records: {}, updatedAt: 0 },
       grammarKnown: JSON.parse(localStorage.getItem(GK_KEY) || "null") || { records: {}, updatedAt: 0 },
       daily: JSON.parse(localStorage.getItem(DL_KEY) || "null") || { wrong: {}, settings: { maxCount: 10 }, sessions: {}, updatedAt: 0 },
       flashcardsStreak: JSON.parse(localStorage.getItem(FS_KEY) || "null") || { goal: 50, days: {}, updatedAt: 0 },

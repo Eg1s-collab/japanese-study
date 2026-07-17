@@ -170,6 +170,8 @@
       node = window.FlashcardsView.render();
     } else if (state.tab === "arrange") {
       node = window.ArrangeView.render();
+    } else if (state.tab === "yojijukugo") {
+      node = window.YojijukugoView.render();
     } else if (state.tab === "bookmarks") {
       node = window.BookmarksView.render();
     }
