@@ -1819,6 +1819,73 @@ h3 { margin: 0 0 6px; font-size: 16px; }
   flex: 1 1 auto;
   min-width: 140px;
 }
+
+/* ---------- last-studied ("เรียนต่อล่าสุด") card ---------- */
+.last-studied-card {
+  padding: 14px 16px;
+  margin: 14px 0 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background:
+    linear-gradient(135deg, rgba(96, 165, 250, 0.10), rgba(52, 211, 153, 0.06) 60%, transparent),
+    var(--card-bg, rgba(255,255,255,0.04));
+  border: 1px solid rgba(96, 165, 250, 0.26);
+}
+.last-studied-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.last-studied-emoji {
+  font-size: 22px;
+  line-height: 1.2;
+  filter: drop-shadow(0 0 6px rgba(96, 165, 250, 0.45));
+}
+.last-studied-info {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.last-studied-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.last-studied-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  opacity: 0.85;
+}
+.last-studied-mode {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(96, 165, 250, 0.16);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  white-space: nowrap;
+}
+.last-studied-deck {
+  font-size: 17px;
+  font-weight: 700;
+  word-break: break-word;
+}
+.last-studied-set {
+  font-size: 12.5px;
+}
+.last-studied-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.last-studied-actions .btn.primary {
+  flex: 1 1 auto;
+  min-width: 140px;
+}
 @media (max-width: 540px) {
   .daily-head .btn-row {
     width: 100%;

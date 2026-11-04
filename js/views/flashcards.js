@@ -54,12 +54,15 @@ window.FlashcardsView = (function () {
     return inside || s;
   }
   function speak(text, lang) {
+    const spoken = hasJapanese(text) ? readingFor(text) : String(text || "");
+    const l = lang || (hasJapanese(text) ? "ja-JP" : "th-TH");
+    if (window.TTS) { window.TTS.speak(spoken, { lang: l, rate: 0.95 }); return; }
+    // Fallback if the shared helper failed to load.
     if (!("speechSynthesis" in window)) return;
     try {
       window.speechSynthesis.cancel();
-      const spoken = hasJapanese(text) ? readingFor(text) : String(text || "");
       const u = new SpeechSynthesisUtterance(spoken);
-      u.lang = lang || (hasJapanese(text) ? "ja-JP" : "th-TH");
+      u.lang = l;
       u.rate = 0.95;
       window.speechSynthesis.speak(u);
     } catch (e) { /* ignore */ }
@@ -357,6 +360,103 @@ window.FlashcardsView = (function () {
     return wrap;
   }
 
+  /* ---------- last-studied ("เรียนต่อล่าสุด") panel ----------
+   * One-tap resume into the deck + mode + sub-set the user most recently
+   * opened. Returns null when there's no valid record yet (e.g. first run,
+   * or the deck was deleted) so the home screen simply omits the card.
+   */
+  const MODE_META = {
+    cards:     { icon: "📇", label: "Flash Cards" },
+    learn:     { icon: "🎯", label: "Learn" },
+    dictation: { icon: "🎧", label: "ฟังเขียน" }
+  };
+  function lastSetLabel(rec, deck) {
+    if (!rec.chunkSize || !deck.chunkSize) return `ทั้งหมด (${deck.words.length} คำ)`;
+    const total = FS().chunkCount(deck);
+    const idxs = (rec.chunks || []).filter((i) => i < total);
+    if (!idxs.length) return `ทั้งหมด (${deck.words.length} คำ)`;
+    if (idxs.length === 1) {
+      const i = idxs[0];
+      const from = i * deck.chunkSize + 1;
+      const to = Math.min(deck.words.length, (i + 1) * deck.chunkSize);
+      return `ชุด ${i + 1}/${total} (คำ ${from}-${to})`;
+    }
+    return `ชุด ${idxs.map((i) => i + 1).join(", ")} (${total} ชุด)`;
+  }
+  function launchLastStudied(rec, homeRoot) {
+    const deck = FS().getDeck(rec.deckId);
+    if (!deck) { FS().clearLastStudied(); refresh(homeRoot); return; }
+    const mode = rec.mode || "cards";
+    // Restore the recorded sub-set — but only when it actually differs from
+    // the current selection, since setSelectedChunks() clears any in-flight
+    // round (we want "เรียนต่อ" to resume, not restart).
+    if (deck.chunkSize && deck.chunkSize === rec.chunkSize &&
+        Array.isArray(rec.chunks) && rec.chunks.length) {
+      const cur = FS().selectedChunkIndices(deck).join(",");
+      const want = rec.chunks.slice().sort((a, b) => a - b).join(",");
+      if (cur !== want) FS().setSelectedChunks(deck.id, rec.chunks);
+    }
+    const fresh = FS().getDeck(rec.deckId);
+    const pool = FS().chunkWords(fresh);
+    state.deckId = deck.id;
+    if (mode === "learn") {
+      if (pool.length < 4) { state.screen = "deck"; refresh(homeRoot); return; }
+      state.screen = "learn";
+    } else if (mode === "dictation") {
+      const stats = window.DictationView
+        ? window.DictationView.deckStats(fresh)
+        : { eligible: 0, allDone: false };
+      if (!stats.eligible) { state.screen = "deck"; refresh(homeRoot); return; }
+      if (stats.allDone) FS().clearProgress(deck.id, "dictation");
+      state.dictDaily = false;
+      state.screen = "dictation";
+    } else {
+      if (!pool.length) { state.screen = "deck"; refresh(homeRoot); return; }
+      state.screen = "cards";
+    }
+    FS().recordLastStudied(deck.id, mode);
+    refresh(homeRoot);
+  }
+  function renderLastStudiedPanel(homeRoot) {
+    const rec = FS().getLastStudied();
+    if (!rec) return null;
+    const deck = FS().getDeck(rec.deckId);
+    if (!deck) return null;
+    const meta = MODE_META[rec.mode] || MODE_META.cards;
+    const data = FS().load();
+    const folder = deck.folderId ? (data.folders.find((f) => f.id === deck.folderId) || null) : null;
+
+    const wrap = document.createElement("section");
+    wrap.className = "card last-studied-card";
+    wrap.innerHTML = `
+      <div class="last-studied-head">
+        <span class="last-studied-emoji">📌</span>
+        <div class="last-studied-info">
+          <div class="last-studied-title-row">
+            <h3 class="last-studied-title">เรียนต่อล่าสุด</h3>
+            <span class="last-studied-mode">${meta.icon} ${escapeHtml(meta.label)}</span>
+          </div>
+          <div class="last-studied-deck">${escapeHtml(deck.name)}${folder ? ` <span class="subtle">· 📁 ${escapeHtml(folder.name)}</span>` : ""}</div>
+          <div class="last-studied-set subtle">${escapeHtml(lastSetLabel(rec, deck))}</div>
+        </div>
+      </div>
+      <div class="btn-row last-studied-actions" style="margin:0;">
+        <button class="btn primary" id="lastResume">▶ เรียนต่อ</button>
+        <button class="btn ghost" id="lastOpen">เปิดชุดคำ</button>
+      </div>
+    `;
+    wrap.querySelector("#lastResume").addEventListener("click", () => {
+      launchLastStudied(rec, homeRoot);
+    });
+    wrap.querySelector("#lastOpen").addEventListener("click", () => {
+      state.folderId = deck.folderId || null;
+      state.deckId = deck.id;
+      state.screen = "deck";
+      refresh(homeRoot);
+    });
+    return wrap;
+  }
+
   /* ---------- streak panel ---------- */
   function renderStreakPanel() {
     const wrap = document.createElement("section");
@@ -641,12 +741,15 @@ window.FlashcardsView = (function () {
         </div>
       </div>
       <p class="subtle">${folder ? "ชุดคำในโฟลเดอร์นี้" : "โฟลเดอร์และชุดคำที่ยังไม่จัดเข้าโฟลเดอร์"}</p>
+      <div id="fc-last-slot"></div>
       <div id="fc-daily-slot"></div>
       <div id="fc-dict-daily-slot"></div>
       <div id="fc-streak-slot"></div>
       <div id="fc-body"></div>
     `;
     if (!state.folderId) {
+      const lastPanel = renderLastStudiedPanel(root);
+      if (lastPanel) root.querySelector("#fc-last-slot").appendChild(lastPanel);
       root.querySelector("#fc-daily-slot").appendChild(renderDailyPanel(root));
       if (window.DictationView && window.DictationDaily) {
         root.querySelector("#fc-dict-daily-slot").appendChild(
@@ -1067,6 +1170,7 @@ window.FlashcardsView = (function () {
 
       root.querySelector("#goCards").addEventListener("click", () => {
         if (!poolWords().length) return alert("ยังไม่มีคำในชุดย่อยนี้");
+        FS().recordLastStudied(deck.id, "cards");
         state.screen = "cards"; refresh(root);
       });
       root.querySelector("#resetCards").addEventListener("click", () => {
@@ -1089,6 +1193,7 @@ window.FlashcardsView = (function () {
       });
       root.querySelector("#goLearn").addEventListener("click", () => {
         if (poolWords().length < 4) return alert("ต้องมีอย่างน้อย 4 คำในชุดย่อยเพื่อใช้โหมด Learn");
+        FS().recordLastStudied(deck.id, "learn");
         state.screen = "learn"; refresh(root);
       });
       root.querySelector("#resetLearn").addEventListener("click", () => {
@@ -1113,6 +1218,7 @@ window.FlashcardsView = (function () {
       root.querySelector("#goDictation").addEventListener("click", () => {
         const stats = window.DictationView.deckStats(FS().getDeck(deck.id));
         if (stats.eligible === 0) return alert("ไม่มีคำที่ฝึกฟังเขียนได้ในชุดย่อยนี้");
+        FS().recordLastStudied(deck.id, "dictation");
         // A finished drill restarts from scratch; a partial one resumes.
         if (stats.allDone) FS().clearProgress(deck.id, "dictation");
         state.dictDaily = false; state.screen = "dictation"; refresh(root);

@@ -818,8 +818,10 @@ window.YojijukugoView = (function () {
 
   /* ---------- shared: speak (ja) ---------- */
   function speak(text) {
+    if (!text) return;
+    if (window.TTS) { window.TTS.speak(text, { lang: "ja-JP" }); return; }
     try {
-      if (!window.speechSynthesis || !text) return;
+      if (!window.speechSynthesis) return;
       const u = new SpeechSynthesisUtterance(String(text));
       u.lang = "ja-JP";
       window.speechSynthesis.cancel();
