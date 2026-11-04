@@ -7,24 +7,26 @@
  *   1. Voices load asynchronously. On first paint `getVoices()` is often []
  *      and no Japanese voice is picked, so a ja-JP utterance falls back to a
  *      voice that can't pronounce kana → silence. We cache voices, listen for
- *      `voiceschanged`, and explicitly pick a matching voice.
- *   2. Chrome drops an utterance when `speak()` is called in the same tick as
- *      `cancel()`. We defer the real speak to the next tick.
- *   3. iOS Safari / some Chrome builds only allow speech once the engine has
- *      been "unlocked" from a real user gesture. We prime it on the first
- *      pointer/key interaction.
- *   4. Chrome sometimes leaves the queue in a `paused` state; we resume().
+ *      `voiceschanged`, and explicitly pick a matching voice when we have one.
+ *   2. MOBILE (iOS Safari / Chrome on Android, incl. installed PWAs) only lets
+ *      speech start when `speak()` runs *synchronously inside the user gesture*
+ *      (the tap handler). Deferring it even one tick (setTimeout/Promise) makes
+ *      the browser silently drop it. So speak() does its work synchronously and
+ *      never defers.
+ *   3. Chrome can leave the queue in a `paused` state; we resume().
+ *   4. Calling `cancel()` right before `speak()` can swallow the new utterance
+ *      on desktop Chrome, so we only cancel when something is actually playing.
  *
  * API:
  *   TTS.speak(text, "ja-JP")                 // lang string, or
  *   TTS.speak(text, { lang: "ja-JP", rate }) // options object
  *   TTS.cancel()
  *   TTS.available()  → boolean
+ *   TTS.hasVoiceFor("ja-JP") → boolean       // is a matching voice installed?
  */
 window.TTS = (function () {
   const synth = ("speechSynthesis" in window) ? window.speechSynthesis : null;
   let voices = [];
-  let unlocked = false;
 
   function loadVoices() {
     if (!synth) return;
@@ -40,6 +42,9 @@ window.TTS = (function () {
         synth.onvoiceschanged = loadVoices;
       }
     } catch (e) { /* ignore */ }
+    // Nudge some engines that populate voices lazily.
+    setTimeout(loadVoices, 250);
+    setTimeout(loadVoices, 1000);
   }
 
   function pickVoice(lang) {
@@ -53,35 +58,22 @@ window.TTS = (function () {
         || null;
   }
 
-  // Prime the engine from a real user gesture so later programmatic calls
-  // (auto-speak, deferred speak) are allowed to make sound on mobile.
-  function unlock() {
-    if (unlocked || !synth) return;
-    unlocked = true;
-    try {
-      synth.resume();
-      const u = new SpeechSynthesisUtterance(" ");
-      u.volume = 0;
-      synth.speak(u);
-    } catch (e) { /* ignore */ }
+  function hasVoiceFor(lang) {
+    if (!synth) return false;
+    if (!voices.length) loadVoices();
+    // Unknown (voices not yet reported) → assume yes; the OS usually has one.
+    if (!voices.length) return true;
+    return !!pickVoice(lang);
   }
 
-  try {
-    ["pointerdown", "touchstart", "keydown", "mousedown"].forEach((ev) => {
-      window.addEventListener(ev, unlock, { capture: true, passive: true });
-    });
-  } catch (e) { /* ignore */ }
-
-  function fire(text, lang, rate) {
-    try {
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = lang || "ja-JP";
-      const v = pickVoice(u.lang);
-      if (v) u.voice = v;
-      u.rate = rate || 0.95;
-      try { if (synth.paused) synth.resume(); } catch (e) { /* ignore */ }
-      synth.speak(u);
-    } catch (e) { /* ignore */ }
+  function build(text, lang, rate) {
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = lang || "ja-JP";
+    const v = pickVoice(u.lang);
+    if (v) u.voice = v;
+    u.rate = rate || 0.95;
+    u.volume = 1;
+    return u;
   }
 
   function speak(text, opts) {
@@ -91,29 +83,25 @@ window.TTS = (function () {
     const lang = (typeof opts === "string") ? opts : (opts && opts.lang);
     const rate = (opts && typeof opts === "object") ? opts.rate : undefined;
 
-    unlock();
-    try { synth.cancel(); } catch (e) { /* ignore */ }
+    try {
+      // Only cancel when something is really in flight — cancelling an idle
+      // queue right before speak() can swallow the new utterance on Chrome.
+      if (synth.speaking || synth.pending) synth.cancel();
+    } catch (e) { /* ignore */ }
+    try { if (synth.paused) synth.resume(); } catch (e) { /* ignore */ }
 
-    // Voices not ready yet → wait for them (with a timeout fallback) so the
-    // right language voice is used instead of silently failing.
-    if (!voices.length) {
-      loadVoices();
-      if (!voices.length) {
-        let done = false;
-        const once = () => {
-          if (done) return;
-          done = true;
-          loadVoices();
-          fire(t, lang, rate);
-        };
-        try { synth.addEventListener("voiceschanged", once, { once: true }); } catch (e) { /* ignore */ }
-        setTimeout(once, 300);
-        return;
-      }
-    }
+    if (!voices.length) loadVoices();
 
-    // Defer one tick to dodge the Chrome cancel()->speak() race.
-    setTimeout(() => fire(t, lang, rate), 0);
+    // Speak synchronously — staying inside the tap handler is what lets mobile
+    // browsers actually produce sound.
+    try {
+      synth.speak(build(t, lang, rate));
+    } catch (e) { /* ignore */ }
+
+    // Safety net for Chrome's "stuck paused right after speak" quirk.
+    try {
+      if (synth.paused) synth.resume();
+    } catch (e) { /* ignore */ }
   }
 
   function cancel() {
@@ -123,5 +111,5 @@ window.TTS = (function () {
 
   function available() { return !!synth; }
 
-  return { speak, cancel, available, pickVoice };
+  return { speak, cancel, available, hasVoiceFor, pickVoice };
 })();
