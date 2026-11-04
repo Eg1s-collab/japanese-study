@@ -23,6 +23,20 @@ window.TTS = (function () {
   const synth = ("speechSynthesis" in window) ? window.speechSynthesis : null;
   let voices = [];
 
+  // iOS 16.4+ : by default web audio (speechSynthesis and <audio>) is muted on
+  // the built-in speaker when the Ring/Silent switch is in silent mode — it's
+  // only heard through headphones. Declaring a "playback" audio session asks
+  // the OS to play through the speaker anyway, like a music/video app. Safe to
+  // set where unsupported (feature-detected); harmless elsewhere.
+  function ensurePlaybackSession() {
+    try {
+      if (navigator.audioSession && navigator.audioSession.type !== "playback") {
+        navigator.audioSession.type = "playback";
+      }
+    } catch (e) { /* ignore */ }
+  }
+  ensurePlaybackSession();
+
   /* ---------- environment ---------- */
   const ua = navigator.userAgent || "";
   const platform = navigator.platform || "";
@@ -101,6 +115,7 @@ window.TTS = (function () {
     const lang = (typeof opts === "string") ? opts : (opts && opts.lang);
     const rate = (opts && typeof opts === "object") ? opts.rate : undefined;
 
+    ensurePlaybackSession();
     clearFallbackTimer();
 
     // No Web Speech at all → go straight to the audio stream.
