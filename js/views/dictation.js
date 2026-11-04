@@ -78,6 +78,7 @@ window.DictationView = (function () {
   }
 
   function speak(text) {
+    if (window.TTS) { window.TTS.speak(text, { lang: "ja-JP", rate: 0.9 }); return; }
     if (!("speechSynthesis" in window)) return;
     try {
       window.speechSynthesis.cancel();

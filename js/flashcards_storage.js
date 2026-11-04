@@ -522,6 +522,39 @@ window.FlashcardsStorage = (function () {
   function getDeck(id) { return load().decks.find((d) => d.id === id) || null; }
   function getFolder(id) { return load().folders.find((f) => f.id === id) || null; }
 
+  /* ---------- last-studied set ----------
+   * A lightweight, per-device record of the deck + mode + sub-set the user
+   * most recently opened, so the home screen can offer a one-tap "เรียนต่อ"
+   * back into it. Kept in its own localStorage key (not part of the synced
+   * document) so it never interferes with the cross-device deck merge.
+   */
+  const LAST_KEY = "jp_flashcards_last_v1";
+  function recordLastStudied(deckId, mode) {
+    try {
+      const d = getDeck(deckId);
+      if (!d) return;
+      const rec = {
+        deckId,
+        mode: mode || "cards",
+        chunkSize: d.chunkSize || null,
+        chunks: selectedChunkIndices(d),
+        at: Date.now()
+      };
+      localStorage.setItem(LAST_KEY, JSON.stringify(rec));
+    } catch (e) { /* ignore */ }
+  }
+  function getLastStudied() {
+    try {
+      const rec = JSON.parse(localStorage.getItem(LAST_KEY));
+      if (!rec || !rec.deckId) return null;
+      if (!getDeck(rec.deckId)) return null; // deck was deleted
+      return rec;
+    } catch (e) { return null; }
+  }
+  function clearLastStudied() {
+    try { localStorage.removeItem(LAST_KEY); } catch (e) { /* ignore */ }
+  }
+
   /* ---------- cloud sync hooks ---------- */
   function getForCloud() {
     return load();
@@ -628,6 +661,7 @@ window.FlashcardsStorage = (function () {
     setCardsRound, setLearnRound,
     parseCSV, importCSV,
     getDeck, getFolder,
+    recordLastStudied, getLastStudied, clearLastStudied,
     getForCloud, setFromCloud, mergeForCloud
   };
 })();
