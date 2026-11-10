@@ -41,6 +41,7 @@
   --r-unique: #e8893c;
   --r-none: rgba(255, 255, 255, 0.07);
   --faded: #9fb3c8;
+  --map-red: #ff7a7a;
   --faded-line: rgba(159, 179, 200, 0.45);
 }
 
@@ -1481,6 +1482,19 @@ h3 { margin: 0 0 6px; font-size: 16px; }
 .t-magic.fc-loot-unlock { color: var(--r-magic); }
 .t-rare.fc-loot-unlock { color: var(--r-rare); }
 .t-unique.fc-loot-unlock { color: var(--r-unique); }
+
+/* ---------- map tiers (POE colors) + folder badges ---------- */
+.fc-map-tier {
+  display: inline-block; margin-right: 8px; padding: 1px 8px; border-radius: 6px;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.02em; vertical-align: 2px;
+  border: 1px solid currentColor; background: rgba(0, 0, 0, 0.25);
+}
+.fc-map-tier.sm { font-size: 11px; padding: 0 6px; }
+.map-white  { color: var(--r-normal); }
+.map-yellow { color: var(--r-rare); }
+.map-red    { color: var(--map-red); }
+.fc-map-line { margin-top: 6px; font-size: 12px; }
+.fc-folder-badged { border-color: var(--r-rare); box-shadow: 0 0 0 1px rgba(242, 212, 92, 0.25), var(--shadow); }
 
 /* ---------- faded words ---------- */
 .fc-faded-text { color: var(--faded); }

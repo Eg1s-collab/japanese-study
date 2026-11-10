@@ -316,6 +316,28 @@ window.FlashcardsMastery = (function () {
     return { counts, total: deck.words.length, next, rareMinDays };
   }
 
+  /* ---------- map tier ----------
+   * A deck (or folder) is a POE map: T1–T16 from how far its words have
+   * come. Each word scores its tier (none 0 … Unique 4); T16 means every
+   * word is Unique. POE colors: white T1–5, yellow T6–10, red T11–16.
+   */
+  const MAP_TIERS = 16;
+  function mapTier(counts) {
+    const total = counts.reduce((a, b) => a + b, 0);
+    const points = counts.reduce((sum, n, tier) => sum + n * tier, 0);
+    const maxPts = total * 4;
+    const need = (k) => Math.ceil((maxPts * (k - 1)) / (MAP_TIERS - 1));
+    let tier = 1;
+    while (total && tier < MAP_TIERS && points >= need(tier + 1)) tier++;
+    return {
+      tier,
+      color: tier <= 5 ? "white" : tier <= 10 ? "yellow" : "red",
+      // Word-tier steps still needed for the next map tier.
+      toNext: total && tier < MAP_TIERS ? need(tier + 1) - points : 0,
+      max: tier >= MAP_TIERS
+    };
+  }
+
   /* ---------- XP & character level ----------
    * XP is derived from the records, so it merges across devices for free:
    * each socket pass is worth SOCKET_XP and reaching a tier adds that
@@ -616,7 +638,7 @@ window.FlashcardsMastery = (function () {
   return {
     TIERS,
     pass, touch, unpass, dropWord, dropDeck,
-    getRec, rarityOf, deckSummary,
+    getRec, rarityOf, deckSummary, mapTier,
     profile, levelInfo, peekLoot, dismissLoot,
     levelForecast, deckRareForecast, upgradeOnPass,
     getLog, dayNum, deckRecords, fadedDays, FADE_DAYS,

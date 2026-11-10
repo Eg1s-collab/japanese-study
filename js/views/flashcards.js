@@ -99,6 +99,29 @@ window.FlashcardsView = (function () {
     }).join("");
     return `<div class="fc-rar-bar ${extraClass || ""}">${segs}</div>`;
   }
+  // "T7" chip in POE map colors.
+  function mapTierChip(counts, extraClass) {
+    const M = window.FlashcardsMastery;
+    if (!M) return "";
+    const mt = M.mapTier(counts);
+    return `<span class="fc-map-tier map-${mt.color} ${extraClass || ""}" title="Tier ${mt.tier} จาก 16">T${mt.tier}</span>`;
+  }
+  // Tier counts summed over a folder's decks.
+  function folderCounts(decks) {
+    const counts = [0, 0, 0, 0, 0];
+    decks.forEach((d) => {
+      window.FlashcardsMastery.deckSummary(d).counts.forEach((n, i) => { counts[i] += n; });
+    });
+    return counts;
+  }
+  // Folder badge: every word Rare+ → 🏅, every word Unique → 👑.
+  function folderBadge(counts) {
+    const total = counts.reduce((a, b) => a + b, 0);
+    if (!total) return null;
+    if (counts[4] === total) return { icon: "👑", label: "ตรา Unique", cls: "t-unique" };
+    if (counts[3] + counts[4] === total) return { icon: "🏅", label: "ตรา Rare", cls: "t-rare" };
+    return null;
+  }
   function thaiShortDate(d) {
     try {
       return d.toLocaleDateString("th-TH", { day: "numeric", month: "short", timeZone: "UTC" });
@@ -130,9 +153,10 @@ window.FlashcardsView = (function () {
     return `
       <div class="card fc-mastery">
         <div class="fc-mastery-head">
-          <h3 style="margin:0;">✦ ความชำนาญ</h3>
+          <h3 style="margin:0;">${mapTierChip(c)} ✦ ความชำนาญ</h3>
           <span class="qprog">Rare ขึ้นไป ${c[3] + c[4]} / ${sum.total}</span>
         </div>
+        ${mapTierLine(c)}
         ${rarityBar(sum)}
         <div class="fc-rar-legend">${legend}</div>
         ${hints.length ? `<ul class="fc-rar-hints">${hints.map((h) => `<li>${h}</li>`).join("")}</ul>` : ""}
@@ -150,6 +174,12 @@ window.FlashcardsView = (function () {
   function fmtNum(n) { return Number(n).toLocaleString("en-US"); }
 
   // "✦ ผ่านวันนี้ → Rare" chip for a word one Flash Card pass from a new tier.
+  function mapTierLine(counts) {
+    const mt = window.FlashcardsMastery.mapTier(counts);
+    if (mt.max) return `<div class="fc-map-line subtle">🗺 Tier สูงสุดแล้ว — ทุกคำเป็น Unique</div>`;
+    return `<div class="fc-map-line subtle">🗺 Tier ${mt.tier}/16 · อัประดับคำอีก ${mt.toNext} ขั้นเพื่อขึ้น T${mt.tier + 1}</div>`;
+  }
+
   // Falls back to a "🌫 ไม่ได้ทวน N วัน" chip for a faded word.
   function nearBadge(deckId, word) {
     const M = window.FlashcardsMastery;
@@ -190,6 +220,30 @@ window.FlashcardsView = (function () {
   }
   function forecastWaitText(f) {
     return `📈 เรียนต่ออีก ${f.daysLeft} วัน แล้วจะคาดการณ์ได้ว่าจะถึงเป้าเมื่อไหร่`;
+  }
+
+  // Inside a folder: its map tier, rarity bar and how close the badge is.
+  function renderFolderPanel(decks) {
+    const c = folderCounts(decks);
+    const total = c.reduce((a, b) => a + b, 0);
+    const badge = folderBadge(c);
+    const wrap = document.createElement("section");
+    wrap.className = "card fc-mastery" + (badge ? " fc-folder-badged" : "");
+    const missingRare = total - c[3] - c[4];
+    const status = !total
+      ? "ยังไม่มีคำในโฟลเดอร์นี้"
+      : badge
+        ? `${badge.icon} ได้${badge.label} แล้ว${badge.icon === "🏅" ? ` — ทุกคำเป็น Unique เพื่อรับ 👑 (อีก ${fmtNum(total - c[4])} คำ)` : ""}`
+        : `🏅 อีก ${fmtNum(missingRare)} คำเป็น Rare ขึ้นไป จะได้ตรา Rare ของโฟลเดอร์นี้`;
+    wrap.innerHTML = `
+      <div class="fc-mastery-head">
+        <h3 style="margin:0;">${mapTierChip(c)} 🗺 ภาพรวมโฟลเดอร์</h3>
+        <span class="qprog">Rare ขึ้นไป ${fmtNum(c[3] + c[4])} / ${fmtNum(total)}</span>
+      </div>
+      ${total ? mapTierLine(c) : ""}
+      ${rarityBar({ counts: c })}
+      <ul class="fc-rar-hints"><li class="${badge ? badge.cls : ""}">${status}</li></ul>`;
+    return wrap;
   }
 
   // Character level card on the flashcards home (whole collection).
@@ -1028,6 +1082,8 @@ window.FlashcardsView = (function () {
       const chPanel = renderChallengePanel();
       if (chPanel) root.querySelector("#fc-char-slot").appendChild(chPanel);
       root.querySelector("#fc-streak-slot").appendChild(renderStreakPanel());
+    } else if (folder && window.FlashcardsMastery) {
+      root.querySelector("#fc-char-slot").appendChild(renderFolderPanel(visibleDecks));
     }
     const body = root.querySelector("#fc-body");
 
@@ -1035,13 +1091,19 @@ window.FlashcardsView = (function () {
       const folders = document.createElement("div");
       folders.className = "unit-list";
       data.folders.forEach((f) => {
-        const count = data.decks.filter((d) => d.folderId === f.id).length;
+        const fDecks = data.decks.filter((d) => d.folderId === f.id);
+        const count = fDecks.length;
+        const fc = window.FlashcardsMastery ? folderCounts(fDecks) : null;
+        const fTotal = fc ? fc.reduce((a, b) => a + b, 0) : 0;
+        const badge = fc ? folderBadge(fc) : null;
         const card = document.createElement("div");
-        card.className = "card unit-card";
+        card.className = "card unit-card" + (badge ? " fc-folder-badged" : "");
         card.innerHTML = `
-          <div class="badge">📁 โฟลเดอร์</div>
-          <h3>${escapeHtml(f.name)}</h3>
-          <p class="subtle">${count} ชุดคำ</p>
+          <div class="badge">📁 โฟลเดอร์${badge ? ` · <span class="${badge.cls}">${badge.icon} ${badge.label}</span>` : ""}</div>
+          <h3>${fc && fTotal ? mapTierChip(fc, "sm") : ""}${escapeHtml(f.name)}</h3>
+          <p class="subtle">${count} ชุดคำ${fTotal ? ` · ${fmtNum(fTotal)} คำ` : ""}</p>
+          ${fc && fTotal ? `<div class="fc-mini-prog"><div class="fc-mini-row" title="Rare ขึ้นไป"><span>✦ ${fmtNum(fc[3] + fc[4])}/${fmtNum(fTotal)}</span>
+            ${rarityBar({ counts: fc }, "sm")}</div></div>` : ""}
           <div class="btn-row">
             <button class="btn ghost" data-rename>เปลี่ยนชื่อ</button>
             <button class="btn ghost" data-del>ลบ</button>
@@ -1080,7 +1142,7 @@ window.FlashcardsView = (function () {
         card.className = "card unit-card";
         card.innerHTML = `
           <div class="badge">📚 ${d.words.length} คำ${starred ? ` · ⭐ ${starred}` : ""}${d.chunkSize ? ` · แบ่ง ${d.chunkSize}` : ""}</div>
-          <h3>${escapeHtml(d.name)}</h3>
+          <h3>${mastery ? mapTierChip(mastery.counts, "sm") : ""}${escapeHtml(d.name)}</h3>
           <div class="fc-mini-prog">
             <div class="fc-mini-row"><span>📇 ${cardsDone}/${d.words.length}</span>
               <div class="progress"><div class="bar" style="width:${pctC}%"></div></div></div>
