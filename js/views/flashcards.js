@@ -202,7 +202,7 @@ window.FlashcardsView = (function () {
           <div class="progress fc-char-xp"><div class="bar" style="width:${p.pct}%"></div></div>
         </div>
       </div>
-      ${characterForecast()}
+      ${characterForecast(p)}
       ${rarityBar(p)}
       <div class="fc-rar-legend">${[4, 3, 2, 1].map((t) =>
         `<span class="fc-rar-chip"><i class="fc-rar-dot r-${TIERS[t].key}"></i>${TIERS[t].label} <b>${fmtNum(p.counts[t])}</b></span>`
@@ -210,8 +210,8 @@ window.FlashcardsView = (function () {
     return wrap;
   }
 
-  function characterForecast() {
-    const f = window.FlashcardsMastery.levelForecast();
+  function characterForecast(profile) {
+    const f = window.FlashcardsMastery.levelForecast(profile);
     if (!f.ready) return `<div class="fc-forecast subtle">${forecastWaitText(f)}</div>`;
     const lines = [];
     const rate = Math.round(f.xpPerDay);
@@ -230,10 +230,13 @@ window.FlashcardsView = (function () {
   // stays until closed or until the next study pass starts a new one.
   // Challenges finished / themes unlocked since the summary was last closed.
   const pendingAwards = { done: [], unlocked: [] };
+  // Month totals from this render's check(), reused by the challenge card.
+  let monthCtx = null;
   function collectAwards() {
     const FC = window.FlashcardsChallenges;
     if (!FC) return;
     const r = FC.check();
+    monthCtx = r.ctx;
     pendingAwards.done.push(...r.newlyDone);
     pendingAwards.unlocked.push(...r.newlyUnlocked);
     if (r.newlyUnlocked.length && window.__theme) window.__theme.paintLocks();
@@ -287,7 +290,8 @@ window.FlashcardsView = (function () {
   function renderChallengePanel() {
     const FC = window.FlashcardsChallenges;
     if (!FC) return null;
-    const st = FC.status();
+    const st = FC.status(monthCtx);
+    monthCtx = null;
     const themes = window.__theme ? window.__theme.THEMES : {};
     const [y, m] = st.month.split("-").map(Number);
     const monthLabel = new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("th-TH", { month: "long", timeZone: "UTC" });

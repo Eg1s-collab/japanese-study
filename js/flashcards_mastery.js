@@ -93,7 +93,14 @@ window.FlashcardsMastery = (function () {
     }
   }
   function dayNum(dateStr) { return Math.floor(Date.parse(dateStr + "T00:00:00Z") / 86400000); }
-  function today() { return dayNum(thailandDate()); }
+  // Cached for a minute: Intl date formatting is slow and callers like the
+  // Daily pool builder ask once per word.
+  let todayCache = { at: 0, n: 0 };
+  function today() {
+    const now = Date.now();
+    if (now - todayCache.at > 60000) todayCache = { at: now, n: dayNum(thailandDate()) };
+    return todayCache.n;
+  }
   function dayToDate(n) { return new Date(n * 86400000); }
 
   function capDays(days) {
@@ -114,7 +121,9 @@ window.FlashcardsMastery = (function () {
     return (deck && deck[wordId]) || null;
   }
 
-  function pass(deckId, wordId, socket) {
+  // `front` (the word's front text) is optional; callers that have the word
+  // pass it so the log needn't look the word up in FlashcardsStorage.
+  function pass(deckId, wordId, socket, front) {
     if (!deckId || !wordId || !SOCKETS.includes(socket)) return;
     const state = load();
     const before = cloneRec(state, deckId, wordId);
@@ -122,29 +131,29 @@ window.FlashcardsMastery = (function () {
     rec[socket] = (rec[socket] || 0) + 1;
     const t = today();
     if (!rec.d.includes(t)) rec.d = capDays([...rec.d, t]);
-    logChange(state, deckId, wordId, before, rec);
+    logChange(state, deckId, wordId, before, rec, front);
     save(state);
   }
   // Seen but not passed (e.g. swiped "ยังไม่ได้") — counts as Normal.
-  function touch(deckId, wordId) {
+  function touch(deckId, wordId, front) {
     if (!deckId || !wordId) return;
     const state = load();
     const deck = state.decks[deckId];
     if (deck && deck[wordId]) return;
     const rec = ensureRec(state, deckId, wordId);
-    logChange(state, deckId, wordId, null, rec);
+    logChange(state, deckId, wordId, null, rec, front);
     save(state);
   }
   // Undo of a Flash Card swipe. Today's day entry stays — the user did
   // review the word today even if they took the swipe back.
-  function unpass(deckId, wordId, socket) {
+  function unpass(deckId, wordId, socket, front) {
     const state = load();
     const deck = state.decks[deckId];
     const rec = deck && deck[wordId];
     if (!rec || !(rec[socket] > 0)) return;
     const before = cloneRec(state, deckId, wordId);
     rec[socket] -= 1;
-    logChange(state, deckId, wordId, before, rec);
+    logChange(state, deckId, wordId, before, rec, front);
     save(state);
   }
   function cloneRec(state, deckId, wordId) {
@@ -322,8 +331,8 @@ window.FlashcardsMastery = (function () {
   }
   // Records one word's change in the daily log (on `state`, saved by the
   // caller) and in the in-memory loot journal.
-  function logChange(state, deckId, wordId, before, after) {
-    const front = wordFront(deckId, wordId);
+  function logChange(state, deckId, wordId, before, after, front) {
+    if (typeof front !== "string") front = wordFront(deckId, wordId);
     const nw = needsWriteFor(front);
     const tierBefore = rarityOf(before, nw);
     const tierAfter = rarityOf(after, nw);
@@ -340,10 +349,9 @@ window.FlashcardsMastery = (function () {
     if (tierBefore < 4 && tierAfter >= 4) day.unique++;
     Object.keys(state.log).forEach((k) => { if (Number(k) <= t - LOG_KEEP) delete state.log[k]; });
 
-    if (!journal || journal.shown) {
-      // profile(state) already includes this change; back it out for the start.
-      journal = { startXp: profile(state).xp - delta, xp: 0, ups: {} };
-    }
+    // Start XP is filled in lazily by peekLoot (total minus journal.xp), so
+    // a pass never has to scan the whole collection.
+    if (!journal || journal.shown) journal = { startXp: null, xp: 0, ups: {} };
     journal.xp += delta;
     const key = deckId + "::" + wordId;
     const prev = journal.ups[key];
@@ -362,6 +370,7 @@ window.FlashcardsMastery = (function () {
     const ups = Object.values(j.ups);
     if (j.xp <= 0 && !ups.length) return null;
     j.shown = true;
+    if (j.startXp === null) j.startXp = profile().xp - j.xp;
     const pick = (t) => ups.filter((u) => u.to === t).map((u) => u.front);
     return {
       xp: j.xp,
@@ -376,34 +385,38 @@ window.FlashcardsMastery = (function () {
   function dismissLoot() { journal = null; }
 
   /* ---------- forecast ----------
-   * Average pace over the last RATE_WINDOW days (counting days with no
-   * study, but not days before the first logged one). Needs at least
+   * Average pace over the last RATE_WINDOW days, counting days with no
+   * study. The window only shrinks for a brand-new history (it never
+   * reaches back before the first logged day ever). Needs at least
    * MIN_FORECAST_DAYS of history before it projects anything.
    */
   function pace() {
     const log = load().log;
     const t = today();
-    const days = Object.keys(log).map(Number).filter((k) => k > t - RATE_WINDOW && k <= t);
-    if (!days.length) return { ready: false, daysLeft: MIN_FORECAST_DAYS, span: 0 };
-    const span = t - Math.min(...days) + 1;
+    const all = Object.keys(log).map(Number).filter((k) => k <= t);
+    if (!all.length) return { ready: false, daysLeft: MIN_FORECAST_DAYS, span: 0 };
+    const span = Math.min(RATE_WINDOW, t - Math.min(...all) + 1);
     if (span < MIN_FORECAST_DAYS) return { ready: false, daysLeft: MIN_FORECAST_DAYS - span, span };
     let xp = 0, rare = 0;
-    days.forEach((k) => { xp += Math.max(0, log[k].xp || 0); rare += log[k].rare || 0; });
+    all.filter((k) => k > t - span).forEach((k) => { xp += Math.max(0, log[k].xp || 0); rare += log[k].rare || 0; });
     return { ready: true, span, xpPerDay: xp / span, rarePerDay: rare / span };
   }
   function addDays(n) { return dayToDate(today() + n); }
   function getLog() { return load().log; }
+  // A deck's { wordId: record } map, read once for bulk lookups.
+  function deckRecords(deckId) { return load().decks[deckId] || {}; }
 
   /**
    * Level projections:
    *   { ready, daysLeft } until there's enough history, then
    *   { ready, xpPerDay, nextLevel: {level, days, date},
    *     milestone: {level, days, date} | null }  (days null = no pace)
+   * `info` = an already computed profile(), to avoid a second full scan.
    */
-  function levelForecast() {
+  function levelForecast(info) {
     const p = pace();
     if (!p.ready) return p;
-    const info = profile();
+    info = info || profile();
     const eta = (target) => {
       const need = xpForLevel(target) - info.xp;
       if (need <= 0) return { level: target, days: 0, date: addDays(0) };
@@ -450,8 +463,9 @@ window.FlashcardsMastery = (function () {
   // Tier a Flash Card pass today would move this word to, if higher than
   // its current tier (0 = no change). Daily Words uses it to surface words
   // that are one review away from levelling up.
-  function upgradeOnPass(deckId, word) {
-    const recs = load().decks[deckId];
+  // `recs` = deckRecords(deckId), when checking many words of one deck.
+  function upgradeOnPass(deckId, word, recs) {
+    recs = recs || load().decks[deckId];
     const rec = recs && recs[word.id];
     if (!rec) return 0;
     const t = today();
@@ -507,7 +521,7 @@ window.FlashcardsMastery = (function () {
     getRec, rarityOf, deckSummary,
     profile, levelInfo, peekLoot, dismissLoot,
     levelForecast, deckRareForecast, upgradeOnPass,
-    getLog, dayNum,
+    getLog, dayNum, deckRecords,
     getForCloud, setFromCloud, mergeForCloud
   };
 })();
