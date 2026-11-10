@@ -141,9 +141,79 @@ window.FlashcardsView = (function () {
       </div>`;
   }
 
+  function fmtNum(n) { return Number(n).toLocaleString("en-US"); }
+  // Kanji/word without the "(reading)" suffix.
+  function plainFront(front) {
+    return String(front || "").replace(/[(（][^()（）]*[)）]/g, "").trim();
+  }
+
+  // Character level card on the flashcards home (whole collection).
+  function renderCharacterPanel() {
+    if (!window.FlashcardsMastery || !window.FlashcardsStorage) return null;
+    const p = window.FlashcardsMastery.profile();
+    if (!p.words) return null;
+    const TIERS = window.FlashcardsMastery.TIERS;
+    const wrap = document.createElement("section");
+    wrap.className = "card fc-char";
+    wrap.innerHTML = `
+      <div class="fc-char-head">
+        <div class="fc-char-lv"><span>Lv</span>${p.level}</div>
+        <div class="fc-char-meta">
+          <div class="fc-char-title">✦ เลเวลผู้เรียน</div>
+          <div class="qprog">${fmtNum(p.xp)} XP${p.max ? " · เลเวลสูงสุด" : ` · อีก ${fmtNum(p.toNext)} XP → Lv ${p.level + 1}`}</div>
+          <div class="progress fc-char-xp"><div class="bar" style="width:${p.pct}%"></div></div>
+        </div>
+      </div>
+      ${rarityBar(p)}
+      <div class="fc-rar-legend">${[4, 3, 2, 1].map((t) =>
+        `<span class="fc-rar-chip"><i class="fc-rar-dot r-${TIERS[t].key}"></i>${TIERS[t].label} <b>${fmtNum(p.counts[t])}</b></span>`
+      ).join("")}<span class="fc-rar-chip">จาก ${fmtNum(p.words)} คำ</span></div>`;
+    return wrap;
+  }
+
+  // POE-style drop summary shown when the user returns from a session; it
+  // stays until closed or until the next study pass starts a new one.
+  function renderLootCard() {
+    const loot = window.FlashcardsMastery && window.FlashcardsMastery.peekLoot();
+    if (!loot) return null;
+    const leveled = loot.after.level > loot.before.level;
+    const names = (list, cls) => list.slice(0, 8).map((f) =>
+      `<span class="fc-loot-word ${cls}">${escapeHtml(plainFront(f))}</span>`).join("") +
+      (list.length > 8 ? `<span class="subtle">+${list.length - 8}</span>` : "");
+    const rows = [];
+    if (loot.unique.length) rows.push(`<div class="fc-loot-row"><b class="t-unique">🟧 Unique ${loot.unique.length}</b>${names(loot.unique, "t-unique")}</div>`);
+    if (loot.rare.length) rows.push(`<div class="fc-loot-row"><b class="t-rare">🟨 Rare ${loot.rare.length}</b>${names(loot.rare, "t-rare")}</div>`);
+    if (loot.magic.length) rows.push(`<div class="fc-loot-row"><b class="t-magic">🟦 Magic +${loot.magic.length}</b></div>`);
+    if (loot.newWords) rows.push(`<div class="fc-loot-row"><b class="t-normal">⬜ คำใหม่ +${loot.newWords}</b></div>`);
+    const wrap = document.createElement("section");
+    wrap.className = "card fc-loot" + (leveled ? " leveled" : "");
+    wrap.innerHTML = `
+      <div class="fc-loot-head">
+        <h3 style="margin:0;">✦ สรุปรอบ</h3>
+        <span class="fc-loot-xp">${loot.xp >= 0 ? "+" : ""}${fmtNum(loot.xp)} XP</span>
+        <button class="btn ghost fc-loot-close" aria-label="ปิด">✕</button>
+      </div>
+      ${leveled ? `<div class="fc-loot-lvup">⬆ เลเวลอัป! Lv ${loot.before.level} → <b>Lv ${loot.after.level}</b></div>` : ""}
+      ${rows.join("")}
+      <div class="fc-loot-lv">
+        <span>Lv ${loot.after.level}</span>
+        <div class="progress fc-char-xp"><div class="bar" style="width:${loot.after.pct}%"></div></div>
+        <span class="subtle">${loot.after.pct}%</span>
+      </div>`;
+    wrap.querySelector(".fc-loot-close").addEventListener("click", () => {
+      window.FlashcardsMastery.dismissLoot();
+      wrap.remove();
+    });
+    return wrap;
+  }
+
   /* ===================== top-level render ===================== */
   function render() {
     const root = document.createElement("div");
+    if (state.screen === "home" || state.screen === "deck") {
+      const loot = renderLootCard();
+      if (loot) root.appendChild(loot);
+    }
     if (state.screen === "home")   root.appendChild(renderHome());
     else if (state.screen === "deck")  root.appendChild(renderDeck());
     else if (state.screen === "cards") root.appendChild(renderCards());
@@ -797,6 +867,7 @@ window.FlashcardsView = (function () {
       <div id="fc-last-slot"></div>
       <div id="fc-daily-slot"></div>
       <div id="fc-dict-daily-slot"></div>
+      <div id="fc-char-slot"></div>
       <div id="fc-streak-slot"></div>
       <div id="fc-body"></div>
     `;
@@ -812,6 +883,8 @@ window.FlashcardsView = (function () {
           })
         );
       }
+      const charPanel = renderCharacterPanel();
+      if (charPanel) root.querySelector("#fc-char-slot").appendChild(charPanel);
       root.querySelector("#fc-streak-slot").appendChild(renderStreakPanel());
     }
     const body = root.querySelector("#fc-body");

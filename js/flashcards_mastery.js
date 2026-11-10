@@ -108,11 +108,13 @@ window.FlashcardsMastery = (function () {
   function pass(deckId, wordId, socket) {
     if (!deckId || !wordId || !SOCKETS.includes(socket)) return;
     const state = load();
+    const before = cloneRec(state, deckId, wordId);
     const rec = ensureRec(state, deckId, wordId);
     rec[socket] = (rec[socket] || 0) + 1;
     const t = today();
     if (!rec.d.includes(t)) rec.d = capDays([...rec.d, t]);
     save(state);
+    logChange(deckId, wordId, before, rec);
   }
   // Seen but not passed (e.g. swiped "ยังไม่ได้") — counts as Normal.
   function touch(deckId, wordId) {
@@ -120,8 +122,9 @@ window.FlashcardsMastery = (function () {
     const state = load();
     const deck = state.decks[deckId];
     if (deck && deck[wordId]) return;
-    ensureRec(state, deckId, wordId);
+    const rec = ensureRec(state, deckId, wordId);
     save(state);
+    logChange(deckId, wordId, null, rec);
   }
   // Undo of a Flash Card swipe. Today's day entry stays — the user did
   // review the word today even if they took the swipe back.
@@ -130,8 +133,15 @@ window.FlashcardsMastery = (function () {
     const deck = state.decks[deckId];
     const rec = deck && deck[wordId];
     if (!rec || !(rec[socket] > 0)) return;
+    const before = cloneRec(state, deckId, wordId);
     rec[socket] -= 1;
     save(state);
+    logChange(deckId, wordId, before, rec);
+  }
+  function cloneRec(state, deckId, wordId) {
+    const deck = state.decks[deckId];
+    const rec = deck && deck[wordId];
+    return rec ? { r: rec.r, m: rec.m, w: rec.w, d: rec.d.slice() } : null;
   }
 
   /* ---------- rarity ---------- */
@@ -229,6 +239,116 @@ window.FlashcardsMastery = (function () {
     return { counts, total: deck.words.length, next };
   }
 
+  /* ---------- XP & character level ----------
+   * XP is derived from the records (never stored), so it merges across
+   * devices for free: each socket pass is worth SOCKET_XP and reaching a
+   * tier adds that tier's bonus once.
+   */
+  const SOCKET_XP = { r: 1, m: 2, w: 3 };
+  const TIER_BONUS = [0, 1, 5, 20, 50];
+  const MAX_LEVEL = 100;
+
+  function recXp(rec, needsWrite) {
+    if (!rec) return 0;
+    let xp = (rec.r || 0) * SOCKET_XP.r + (rec.m || 0) * SOCKET_XP.m + (rec.w || 0) * SOCKET_XP.w;
+    const tier = rarityOf(rec, needsWrite);
+    for (let i = 1; i <= tier; i++) xp += TIER_BONUS[i];
+    return xp;
+  }
+  // Total XP needed to reach level L (L1 = 0). Steepens like POE: ~3k for
+  // Lv 10, ~16k for Lv 20, ~600k for Lv 100.
+  function xpForLevel(L) { return Math.round(25 * Math.pow(Math.max(0, L - 1), 2.2)); }
+  function levelInfo(xp) {
+    let L = 1;
+    while (L < MAX_LEVEL && xp >= xpForLevel(L + 1)) L++;
+    const cur = xpForLevel(L);
+    const next = L < MAX_LEVEL ? xpForLevel(L + 1) : cur;
+    const pct = next > cur ? Math.min(100, Math.round(((xp - cur) / (next - cur)) * 100)) : 100;
+    return { level: L, xp, cur, next, toNext: Math.max(0, next - xp), pct, max: L >= MAX_LEVEL };
+  }
+
+  function needsWriteFor(front) {
+    const DV = window.DictationView;
+    return DV && DV.isDrillable ? DV.isDrillable(front) : true;
+  }
+  function liveDecks() {
+    return window.FlashcardsStorage ? window.FlashcardsStorage.load().decks : [];
+  }
+  // Whole-collection stats: XP/level plus tier counts over every live deck.
+  function profile() {
+    const state = load();
+    const counts = [0, 0, 0, 0, 0];
+    let xp = 0;
+    let words = 0;
+    liveDecks().forEach((deck) => {
+      const recs = state.decks[deck.id] || {};
+      (deck.words || []).forEach((w) => {
+        const rec = recs[w.id] || null;
+        const nw = needsWriteFor(w.front);
+        counts[rarityOf(rec, nw)]++;
+        xp += recXp(rec, nw);
+        words++;
+      });
+    });
+    return Object.assign(levelInfo(xp), { counts, words });
+  }
+
+  /* ---------- loot journal ----------
+   * In-memory log of what changed during the current study stretch, so the
+   * flashcards screen can show a POE-style drop summary when the user
+   * comes back from any mode (cards, learn, daily, ฟังเขียน). Showing it
+   * marks it seen; it stays up through re-renders until dismissed, and the
+   * next pass after it was seen starts a fresh journal.
+   */
+  let journal = null;
+
+  function wordFront(deckId, wordId) {
+    const FS = window.FlashcardsStorage;
+    const deck = FS && FS.getDeck(deckId);
+    const w = deck && deck.words.find((x) => x.id === wordId);
+    return w ? w.front : "";
+  }
+  function logChange(deckId, wordId, before, after) {
+    const front = wordFront(deckId, wordId);
+    const nw = needsWriteFor(front);
+    const tierBefore = rarityOf(before, nw);
+    const tierAfter = rarityOf(after, nw);
+    const delta = recXp(after, nw) - recXp(before, nw);
+    if (!journal || journal.shown) {
+      // profile() already includes this change; back it out for the start.
+      journal = { startXp: profile().xp - delta, xp: 0, ups: {} };
+    }
+    journal.xp += delta;
+    const key = deckId + "::" + wordId;
+    const prev = journal.ups[key];
+    const from = prev ? prev.from : tierBefore;
+    if (tierAfter > from) journal.ups[key] = { from, to: tierAfter, front };
+    else delete journal.ups[key];
+  }
+  /**
+   * The current loot (and marks it seen), or null if nothing was earned:
+   *   { xp, before: levelInfo, after: levelInfo,
+   *     newWords, magic: [front], rare: [front], unique: [front] }
+   */
+  function peekLoot() {
+    const j = journal;
+    if (!j) return null;
+    const ups = Object.values(j.ups);
+    if (j.xp <= 0 && !ups.length) return null;
+    j.shown = true;
+    const pick = (t) => ups.filter((u) => u.to === t).map((u) => u.front);
+    return {
+      xp: j.xp,
+      before: levelInfo(Math.max(0, j.startXp)),
+      after: levelInfo(Math.max(0, j.startXp + j.xp)),
+      newWords: ups.filter((u) => u.from === 0).length,
+      magic: pick(2),
+      rare: pick(3),
+      unique: pick(4)
+    };
+  }
+  function dismissLoot() { journal = null; }
+
   /* ---------- cloud hooks ---------- */
   function getForCloud() { return load(); }
   function setFromCloud(state) {
@@ -262,6 +382,7 @@ window.FlashcardsMastery = (function () {
     TIERS,
     pass, touch, unpass,
     getRec, rarityOf, deckSummary,
+    profile, levelInfo, peekLoot, dismissLoot,
     getForCloud, setFromCloud, mergeForCloud
   };
 })();
