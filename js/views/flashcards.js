@@ -114,6 +114,7 @@ window.FlashcardsView = (function () {
       `<span class="fc-rar-chip"><i class="fc-rar-dot r-${TIERS[t].key}"></i>${TIERS[t].label} <b>${c[t]}</b></span>`
     ).join("");
     const hints = [];
+    if (n.faded) hints.push(`🌫 ไม่ได้ทวนเกิน ${window.FlashcardsMastery.FADE_DAYS} วัน <b>${n.faded}</b> คำ (นานสุด ${n.fadedMax} วัน) — ทวนใน Flash Card หรือคำประจำวัน`);
     if (n.rareToday) hints.push(`🟨 ทวนวันนี้ <b>${n.rareToday}</b> คำจะขึ้น Rare`);
     if (n.uniqueToday) hints.push(`🟧 ทวนวันนี้ <b>${n.uniqueToday}</b> คำจะขึ้น Unique`);
     if (n.rareLater) hints.push(`🟨 ทวนพรุ่งนี้อีก <b>${n.rareLater}</b> คำจะขึ้น Rare`);
@@ -149,12 +150,17 @@ window.FlashcardsView = (function () {
   function fmtNum(n) { return Number(n).toLocaleString("en-US"); }
 
   // "✦ ผ่านวันนี้ → Rare" chip for a word one Flash Card pass from a new tier.
+  // Falls back to a "🌫 ไม่ได้ทวน N วัน" chip for a faded word.
   function nearBadge(deckId, word) {
     const M = window.FlashcardsMastery;
-    const up = M && word ? M.upgradeOnPass(deckId, word) : 0;
-    if (up < 2) return "";
-    const tier = M.TIERS[up];
-    return `<div class="fc-near-badge t-${tier.key}">✦ ผ่านวันนี้ → ${tier.label}</div>`;
+    if (!M || !word) return "";
+    const up = M.upgradeOnPass(deckId, word);
+    if (up >= 2) {
+      const tier = M.TIERS[up];
+      return `<div class="fc-near-badge t-${tier.key}">✦ ผ่านวันนี้ → ${tier.label}</div>`;
+    }
+    const fd = M.fadedDays(M.getRec(deckId, word.id));
+    return fd ? `<div class="fc-near-badge fc-faded-badge">🌫 ไม่ได้ทวน ${fd} วัน — ผ่านเพื่อฟื้นคำ</div>` : "";
   }
   // How many of today's not-yet-reviewed Daily Words would level up.
   function dailyNearLine(FD) {
@@ -163,15 +169,20 @@ window.FlashcardsView = (function () {
     const words = new Map();
     (FS().load().decks || []).forEach((d) => d.words.forEach((w) => words.set(d.id + "::" + w.id, w)));
     const byTier = [0, 0, 0, 0, 0];
+    let faded = 0;
     FD.getItems().forEach((it) => {
       if (it.state !== "pending") return;
       const w = words.get(it.deckId + "::" + it.wordId);
-      if (w) byTier[M.upgradeOnPass(it.deckId, w)]++;
+      if (!w) return;
+      byTier[M.upgradeOnPass(it.deckId, w)]++;
+      if (M.fadedDays(M.getRec(it.deckId, w.id))) faded++;
     });
     const parts = [4, 3, 2].filter((t) => byTier[t]).map((t) =>
       `<span class="t-${M.TIERS[t].key}">${M.TIERS[t].label} ${byTier[t]}</span>`);
-    if (!parts.length) return "";
-    return `<div class="fc-near-line">✦ ทวนผ่านวันนี้แล้วจะขึ้นระดับ: ${parts.join(" · ")}</div>`;
+    const lines = [];
+    if (parts.length) lines.push(`<div class="fc-near-line">✦ ทวนผ่านวันนี้แล้วจะขึ้นระดับ: ${parts.join(" · ")}</div>`);
+    if (faded) lines.push(`<div class="fc-near-line">🌫 มีคำซีดที่ไม่ได้ทวนนาน <span class="fc-faded-text">${faded} คำ</span> — ทวนผ่านครั้งเดียวก็กลับมาสด</div>`);
+    return lines.join("");
   }
   function etaText(days, date) {
     if (days === 0) return "วันนี้";
@@ -202,7 +213,8 @@ window.FlashcardsView = (function () {
       ${rarityBar(p)}
       <div class="fc-rar-legend">${[4, 3, 2, 1].map((t) =>
         `<span class="fc-rar-chip"><i class="fc-rar-dot r-${TIERS[t].key}"></i>${TIERS[t].label} <b>${fmtNum(p.counts[t])}</b></span>`
-      ).join("")}<span class="fc-rar-chip">จาก ${fmtNum(p.words)} คำ</span></div>`;
+      ).join("")}<span class="fc-rar-chip">จาก ${fmtNum(p.words)} คำ</span>${
+        p.faded ? `<span class="fc-rar-chip fc-faded-text">🌫 ซีด <b>${fmtNum(p.faded)}</b></span>` : ""}</div>`;
     return wrap;
   }
 
@@ -257,6 +269,7 @@ window.FlashcardsView = (function () {
       if (loot.rare.length) rows.push(`<div class="fc-loot-row"><b class="t-rare">🟨 Rare ${loot.rare.length}</b>${names(loot.rare, "t-rare")}</div>`);
       if (loot.magic.length) rows.push(`<div class="fc-loot-row"><b class="t-magic">🟦 Magic +${loot.magic.length}</b></div>`);
       if (loot.newWords) rows.push(`<div class="fc-loot-row"><b class="t-normal">⬜ คำใหม่ +${loot.newWords}</b></div>`);
+      if (loot.revived.length) rows.push(`<div class="fc-loot-row"><b class="fc-faded-text">🌫 ฟื้นคำซีด ${loot.revived.length}</b>${names(loot.revived, "fc-faded-text")}</div>`);
     }
     const wrap = document.createElement("section");
     wrap.className = "card fc-loot" + (leveled ? " leveled" : "");
@@ -1325,11 +1338,24 @@ window.FlashcardsView = (function () {
         list.innerHTML = `<div class="empty">ยังไม่มีคำในชุดนี้</div>`;
         return;
       }
+      const M = window.FlashcardsMastery;
+      const recs = M ? M.deckRecords(deck.id) : {};
+      // Tier dot before the word, "🌫 N วัน" tag after it when faded.
+      const tierDot = (w) => {
+        if (!M) return "";
+        const rec = recs[w.id] || null;
+        const tier = M.TIERS[M.rarityOf(rec, window.DictationView ? window.DictationView.isDrillable(w.front) : true)];
+        return `<i class="fc-rar-dot r-${tier.key}" title="${tier.label}"></i>`;
+      };
+      const fadedTag = (w) => {
+        const fd = M ? M.fadedDays(recs[w.id]) : 0;
+        return fd ? `<span class="fc-word-faded" title="ไม่ได้ทวน ${fd} วัน">🌫 ${fd} วัน</span>` : "";
+      };
       list.innerHTML = words.map((w) => `
-        <div class="fc-word" data-id="${w.id}">
+        <div class="fc-word ${M && M.fadedDays(recs[w.id]) ? "is-faded" : ""}" data-id="${w.id}">
           <button class="star ${w.starred ? "on" : ""}" data-star title="ติดดาว">★</button>
           <div class="fc-word-text">
-            <div class="fc-front">${escapeHtml(w.front)}</div>
+            <div class="fc-front">${tierDot(w)}${escapeHtml(w.front)}${fadedTag(w)}</div>
             <div class="fc-back">${escapeHtml(w.back)}</div>
           </div>
           <div class="fc-word-actions">

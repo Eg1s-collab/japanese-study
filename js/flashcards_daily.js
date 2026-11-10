@@ -3,9 +3,10 @@
  *
  * Composition: first up to 30% from words one Flash Card pass away from a
  * higher mastery tier (FlashcardsMastery.upgradeOnPass — e.g. their 3rd
- * study day makes them Rare), then up to 80% from words that are currently
- * "still unknown" (most recently swiped "ยังไม่ได้" without a follow-up
- * pass), the rest from any other studied word (in seenIds, completedIds
+ * study day makes them Rare), then up to 30% faded words (Magic+ but not
+ * reviewed for FADE_DAYS — oldest gap first), then up to 80% from words
+ * that are currently "still unknown" (most recently swiped "ยังไม่ได้"
+ * without a follow-up pass), the rest from any other studied word (in seenIds, completedIds
  * or with a mastery record). All daily picks must have been studied at
  * least once in Flash Cards, Learn or ฟังเขียน.
  *
@@ -35,6 +36,7 @@ window.FlashcardsDaily = (function () {
   const MAX_COUNT = 500;
   const UNKNOWN_RATIO = 0.8;
   const NEAR_RATIO = 0.3;
+  const FADED_RATIO = 0.3;
 
   function thailandDate() {
     if (window.FlashcardsStreak) return window.FlashcardsStreak.thailandDate();
@@ -123,6 +125,7 @@ window.FlashcardsDaily = (function () {
 
   // Pull all words across all decks and bucket by candidate status.
   // near:    one Flash Card pass today raises its mastery tier
+  // faded:   Magic+ but not reviewed for FADE_DAYS ({ ref, days })
   // unknown: currently in stillUnknownIds (sticky tag, see storage)
   // passed:  studied at least once (seenIds, completedIds or a mastery
   //          record) and NOT currently in stillUnknownIds.
@@ -132,11 +135,12 @@ window.FlashcardsDaily = (function () {
   // contribute candidates.
   function gatherCandidates(allowDeckIds) {
     const FS = window.FlashcardsStorage;
-    if (!FS) return { near: [], unknown: [], passed: [] };
+    if (!FS) return { near: [], faded: [], unknown: [], passed: [] };
     const M = window.FlashcardsMastery;
     const data = FS.load();
     const filter = (allowDeckIds && allowDeckIds.size) ? allowDeckIds : null;
     const near = [];
+    const faded = [];
     const unknown = [];
     const passed = [];
     for (const d of (data.decks || [])) {
@@ -151,22 +155,24 @@ window.FlashcardsDaily = (function () {
         if (!studied) continue;
         const ref = { deckId: d.id, wordId: w.id };
         if (mastered && M.upgradeOnPass(d.id, w, recs) > 0) near.push(ref);
+        const fd = mastered ? M.fadedDays(recs[w.id]) : 0;
+        if (fd) faded.push({ ref, days: fd });
         if (stillU.has(w.id)) unknown.push(ref);
         else passed.push(ref);
       }
     }
-    return { near, unknown, passed };
+    return { near, faded, unknown, passed };
   }
 
   function buildPool(goalCount, deckIds) {
     const allow = new Set(cleanDeckIds(deckIds));
-    const { near, unknown, passed } = gatherCandidates(allow);
+    const { near, faded, unknown, passed } = gatherCandidates(allow);
     const target = clampCount(goalCount);
     const taken = new Set();
     const key = (ref) => ref.deckId + "::" + ref.wordId;
-    function take(list, max) {
+    function take(list, max, keepOrder) {
       const out = [];
-      for (const ref of shuffle(list)) {
+      for (const ref of (keepOrder ? list : shuffle(list))) {
         if (out.length >= max) break;
         if (taken.has(key(ref))) continue;
         taken.add(key(ref));
@@ -175,10 +181,14 @@ window.FlashcardsDaily = (function () {
       return out;
     }
     const pickedNear = take(near, Math.floor(target * NEAR_RATIO));
-    const pickedUnknown = take(unknown, Math.min(Math.floor(target * UNKNOWN_RATIO), target - pickedNear.length));
-    const pickedPassed = take(passed, target - pickedNear.length - pickedUnknown.length);
+    // Longest-forgotten first.
+    const fadedRefs = faded.sort((a, b) => b.days - a.days).map((f) => f.ref);
+    const pickedFaded = take(fadedRefs, Math.floor(target * FADED_RATIO), true);
+    const picked = pickedNear.length + pickedFaded.length;
+    const pickedUnknown = take(unknown, Math.min(Math.floor(target * UNKNOWN_RATIO), target - picked));
+    const pickedPassed = take(passed, target - picked - pickedUnknown.length);
     // Mix them so the user doesn't see all unknowns in a block first.
-    const merged = shuffle(pickedNear.concat(pickedUnknown, pickedPassed));
+    const merged = shuffle(pickedNear.concat(pickedFaded, pickedUnknown, pickedPassed));
     return merged.map((ref) => ({ deckId: ref.deckId, wordId: ref.wordId, state: "pending" }));
   }
 

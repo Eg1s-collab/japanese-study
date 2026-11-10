@@ -40,6 +40,8 @@
   --r-rare: #f2d45c;
   --r-unique: #e8893c;
   --r-none: rgba(255, 255, 255, 0.07);
+  --faded: #9fb3c8;
+  --faded-line: rgba(159, 179, 200, 0.45);
 }
 
 * { box-sizing: border-box; }
@@ -1479,6 +1481,16 @@ h3 { margin: 0 0 6px; font-size: 16px; }
 .t-magic.fc-loot-unlock { color: var(--r-magic); }
 .t-rare.fc-loot-unlock { color: var(--r-rare); }
 .t-unique.fc-loot-unlock { color: var(--r-unique); }
+
+/* ---------- faded words ---------- */
+.fc-faded-text { color: var(--faded); }
+.fc-faded-badge { color: var(--faded); }
+.fc-word .fc-rar-dot { margin-right: 6px; vertical-align: 2px; }
+.fc-word-faded {
+  margin-left: 8px; padding: 1px 7px; border-radius: 999px; font-size: 11px;
+  color: var(--faded); border: 1px solid var(--faded-line); vertical-align: 2px;
+}
+.fc-word.is-faded .fc-front { opacity: 0.75; }
 
 .fc-near-badge {
   margin: 10px auto 0; width: fit-content; padding: 3px 10px; border-radius: 999px;
