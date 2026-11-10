@@ -11,7 +11,14 @@
  *
  * Sync model:
  *   • on sign-in: pull cloud doc, merge with local, write merged back to both
- *   • on subsequent local saves: debounced push to cloud (1.5 s)
+ *   • on subsequent local saves: debounced push (1.5 s), flushed right away
+ *     when the app goes to the background. A push first checks the cloud
+ *     doc's clientTs: if it's still the one this tab last wrote, local is
+ *     written as-is (so deletions stick); if another device wrote since,
+ *     merge first instead of overwriting its changes.
+ *   • when the app comes back to the foreground or back online: pull and
+ *     merge again if another device wrote meanwhile, so a home-screen app
+ *     that iOS kept alive for days doesn't keep working on a stale copy
  *   • merge is conflict-free per record:
  *       - bookmarks: union by id (newer savedAt wins)
  *       - conjugation per (level/kind/key/form): newer lastTs wins;
@@ -53,10 +60,15 @@ const FS_KEY = "jp_flashcards_streak_v1";
 const FD_KEY = "jp_flashcards_daily_v1";
 const DD_KEY = "jp_dictation_daily_v1";
 
+const SYNC_KEYS = [BM_KEY, CJ_KEY, FC_KEY, LP_KEY, YJ_KEY, GK_KEY, DL_KEY, FS_KEY, FD_KEY, DD_KEY];
+
 let currentUser = null;
 let pushTimer = null;
 let initialPullDone = false;
 let authReady = false;
+let lastClientTs = 0;   // clientTs of the cloud doc as this tab last wrote/read it
+let syncing = null;     // in-flight sync promise
+let syncAgain = null;   // reason for one more sync requested while one ran
 
 /* ---------- DOM elements (created once, then reused) ---------- */
 function el(id) { return document.getElementById(id); }
@@ -127,15 +139,50 @@ function mergeConj(a, b) {
   return out;
 }
 
-/* ---------- pull / push ---------- */
-async function pullAndMerge() {
+/* ---------- sync ---------- */
+function localSnapshot() {
+  return SYNC_KEYS.map((k) => localStorage.getItem(k)).join("\u0000");
+}
+
+function readLocal() {
+  return {
+    bookmarks: JSON.parse(localStorage.getItem(BM_KEY) || "[]"),
+    conjugation: JSON.parse(localStorage.getItem(CJ_KEY) || "{}"),
+    flashcards: JSON.parse(localStorage.getItem(FC_KEY) || "null") || { folders: [], decks: [], updatedAt: 0 },
+    lessonProgress: JSON.parse(localStorage.getItem(LP_KEY) || "null") || { records: {}, updatedAt: 0 },
+    yojijukugoProgress: JSON.parse(localStorage.getItem(YJ_KEY) || "null") || { records: {}, updatedAt: 0 },
+    grammarKnown: JSON.parse(localStorage.getItem(GK_KEY) || "null") || { records: {}, updatedAt: 0 },
+    daily: JSON.parse(localStorage.getItem(DL_KEY) || "null") || { wrong: {}, settings: { maxCount: 10 }, sessions: {}, updatedAt: 0 },
+    flashcardsStreak: JSON.parse(localStorage.getItem(FS_KEY) || "null") || { goal: 50, days: {}, updatedAt: 0 },
+    flashcardsDaily: JSON.parse(localStorage.getItem(FD_KEY) || "null") || { goalCount: 100, date: "", items: [], updatedAt: 0 },
+    dictationDaily: JSON.parse(localStorage.getItem(DD_KEY) || "null") || { goalCount: 50, date: "", items: [], updatedAt: 0 }
+  };
+}
+
+async function writeCloud(ref, data) {
+  const ts = Date.now();
+  await setDoc(ref, { ...data, updatedAt: serverTimestamp(), clientTs: ts });
+  lastClientTs = ts;
+}
+
+// reason: "signin" | "push" | "resume"
+async function mergeWithCloud(reason) {
   if (!currentUser) return;
-  setStatus("กำลังซิงก์…");
+  setStatus(reason === "push" ? "กำลังบันทึก…" : "กำลังซิงก์…");
   try {
     const ref = doc(db, "users", currentUser.uid);
     const snap = await getDoc(ref);
     const cloud = snap.exists() ? snap.data() : null;
 
+    // Nobody else wrote since our last sync: a push overwrites with local
+    // (deletions included), a resume has nothing to pull.
+    if (reason !== "signin" && cloud && lastClientTs && cloud.clientTs === lastClientTs) {
+      if (reason === "push") await writeCloud(ref, readLocal());
+      setStatus("ซิงก์แล้ว ✓");
+      return;
+    }
+
+    const before = localSnapshot();
     const localBm = JSON.parse(localStorage.getItem(BM_KEY) || "[]");
     const localCj = JSON.parse(localStorage.getItem(CJ_KEY) || "{}");
     const localFc = JSON.parse(localStorage.getItem(FC_KEY) || "null");
@@ -223,7 +270,7 @@ async function pullAndMerge() {
       window.DictationDaily.setFromCloud(mergedDd);
     }
 
-    await setDoc(ref, {
+    await writeCloud(ref, {
       bookmarks: mergedBm,
       conjugation: mergedCj,
       flashcards: mergedFc,
@@ -233,50 +280,51 @@ async function pullAndMerge() {
       daily: mergedDl,
       flashcardsStreak: mergedFs,
       flashcardsDaily: mergedFd,
-      dictationDaily: mergedDd,
-      updatedAt: serverTimestamp(),
-      clientTs: Date.now()
+      dictationDaily: mergedDd
     });
 
     initialPullDone = true;
     setStatus("ซิงก์แล้ว ✓");
-    document.dispatchEvent(new CustomEvent("cloud-pulled"));
+    // Re-render on sign-in, and on resume only if another device changed
+    // something. Never after a push: re-rendering mid-session (e.g. while
+    // flipping flashcards) would reset the view; the merged data is already
+    // in localStorage for the next screen.
+    if (reason === "signin" || (reason === "resume" && localSnapshot() !== before)) {
+      document.dispatchEvent(new CustomEvent("cloud-pulled"));
+    }
   } catch (e) {
-    console.error("[cloud] pullAndMerge", e);
-    setStatus("ซิงก์ไม่สำเร็จ", true);
+    console.error("[cloud] sync (" + reason + ")", e);
+    setStatus(reason === "push" ? "บันทึกไม่สำเร็จ" : "ซิงก์ไม่สำเร็จ", true);
   }
 }
 
-async function pushNow() {
-  if (!currentUser || !initialPullDone) return;
-  try {
-    setStatus("กำลังบันทึก…");
-    const ref = doc(db, "users", currentUser.uid);
-    await setDoc(ref, {
-      bookmarks: JSON.parse(localStorage.getItem(BM_KEY) || "[]"),
-      conjugation: JSON.parse(localStorage.getItem(CJ_KEY) || "{}"),
-      flashcards: JSON.parse(localStorage.getItem(FC_KEY) || "null") || { folders: [], decks: [], updatedAt: 0 },
-      lessonProgress: JSON.parse(localStorage.getItem(LP_KEY) || "null") || { records: {}, updatedAt: 0 },
-      yojijukugoProgress: JSON.parse(localStorage.getItem(YJ_KEY) || "null") || { records: {}, updatedAt: 0 },
-      grammarKnown: JSON.parse(localStorage.getItem(GK_KEY) || "null") || { records: {}, updatedAt: 0 },
-      daily: JSON.parse(localStorage.getItem(DL_KEY) || "null") || { wrong: {}, settings: { maxCount: 10 }, sessions: {}, updatedAt: 0 },
-      flashcardsStreak: JSON.parse(localStorage.getItem(FS_KEY) || "null") || { goal: 50, days: {}, updatedAt: 0 },
-      flashcardsDaily: JSON.parse(localStorage.getItem(FD_KEY) || "null") || { goalCount: 100, date: "", items: [], updatedAt: 0 },
-      dictationDaily: JSON.parse(localStorage.getItem(DD_KEY) || "null") || { goalCount: 50, date: "", items: [], updatedAt: 0 },
-      updatedAt: serverTimestamp(),
-      clientTs: Date.now()
-    });
-    setStatus("ซิงก์แล้ว ✓");
-  } catch (e) {
-    console.error("[cloud] pushNow", e);
-    setStatus("บันทึกไม่สำเร็จ", true);
+// One sync at a time; a request that arrives mid-sync runs once afterwards.
+function syncNow(reason) {
+  if (!currentUser) return Promise.resolve();
+  if (syncing) {
+    if (syncAgain !== "signin") syncAgain = reason;
+    return syncing;
   }
+  syncing = mergeWithCloud(reason).finally(() => {
+    syncing = null;
+    const next = syncAgain;
+    syncAgain = null;
+    if (next && currentUser) syncNow(next);
+  });
+  return syncing;
 }
 
 function schedulePush() {
   if (!currentUser || !initialPullDone) return;
   if (pushTimer) clearTimeout(pushTimer);
-  pushTimer = setTimeout(pushNow, 1500);
+  pushTimer = setTimeout(() => { pushTimer = null; syncNow("push"); }, 1500);
+}
+
+function flushPush() {
+  if (!pushTimer) return;
+  clearTimeout(pushTimer);
+  pushTimer = null;
+  syncNow("push");
 }
 
 /* ---------- sign-in ----------
@@ -325,6 +373,7 @@ getRedirectResult(auth).catch((e) => {
 onAuthStateChanged(auth, async (u) => {
   currentUser = u;
   initialPullDone = false;
+  lastClientTs = 0;
   updateAuthUI();
   // Signal "auth state is now known" exactly once, so consumers (e.g. the
   // starter-deck seed) never act while sign-in is still resolving.
@@ -334,9 +383,22 @@ onAuthStateChanged(auth, async (u) => {
     document.dispatchEvent(new CustomEvent("auth-ready", { detail: { signedIn: !!u } }));
   }
   if (u) {
-    await pullAndMerge();
+    await syncNow("signin");
   }
 });
+
+// iOS suspends a backgrounded home-screen app without reloading it, so push
+// pending changes on the way out and pull other devices' changes on return.
+// A failed sign-in pull is retried the same way.
+function resync() {
+  if (currentUser) syncNow(initialPullDone ? "resume" : "signin");
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") flushPush();
+  else resync();
+});
+window.addEventListener("pagehide", flushPush);
+window.addEventListener("online", resync);
 
 document.addEventListener("DOMContentLoaded", () => {
   const btn = el("signInBtn");
