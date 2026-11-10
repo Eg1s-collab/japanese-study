@@ -166,6 +166,8 @@ window.FlashcardsStorage = (function () {
   }
   function deleteDeck(id) {
     const state = load();
+    // Bank the deck's mastery XP before its words are gone.
+    if (window.FlashcardsMastery) window.FlashcardsMastery.dropDeck(state.decks.find((d) => d.id === id));
     const before = state.decks.length;
     state.decks = state.decks.filter((d) => d.id !== id);
     if (state.decks.length !== before) state.deletedDecks[id] = Date.now();
@@ -203,6 +205,7 @@ window.FlashcardsStorage = (function () {
     const state = load();
     const d = state.decks.find((x) => x.id === deckId);
     if (!d) return;
+    if (window.FlashcardsMastery) window.FlashcardsMastery.dropWord(deckId, wordId, wordFront(d, wordId));
     d.words = d.words.filter((w) => w.id !== wordId);
     commitDeck(state, d);
   }
