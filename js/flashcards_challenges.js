@@ -79,9 +79,9 @@ window.FlashcardsChallenges = (function () {
     const goal = FS ? FS.getGoal() : 0;
     const ctx = { studyDays: 0, bestGoalRun: 0, cards: 0, xp: 0, rare: 0, unique: 0, m: 0, w: 0 };
     let run = 0;
-    for (let day = 1; day <= d; day++) {
-      const ds = `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-      const cards = FS ? FS.getCount(ds) : 0;
+    // getDays(d) = this month's days 1..today, oldest first, in one read.
+    const days = FS ? FS.getDays(d) : [];
+    for (const { date: ds, count: cards } of days) {
       if (cards > 0) ctx.studyDays++;
       ctx.cards += cards;
       run = goal && cards >= goal ? run + 1 : 0;
@@ -101,7 +101,8 @@ window.FlashcardsChallenges = (function () {
 
   /**
    * Records newly finished challenges and newly earned theme unlocks.
-   * Returns { newlyDone: [challenge], newlyUnlocked: [reward] }.
+   * Returns { newlyDone: [challenge], newlyUnlocked: [reward], ctx } —
+   * pass `ctx` on to status() to skip recomputing the month.
    */
   function check() {
     const state = load();
@@ -125,15 +126,15 @@ window.FlashcardsChallenges = (function () {
       }
     });
     if (newlyDone.length || newlyUnlocked.length) save(state);
-    return { newlyDone, newlyUnlocked };
+    return { newlyDone, newlyUnlocked, ctx };
   }
 
   // Everything the challenge card needs for the current month.
-  function status() {
+  function status(ctx) {
     const state = load();
     const month = monthKey();
     const done = state.months[month] || {};
-    const ctx = monthContext();
+    ctx = ctx || monthContext();
     // A recorded challenge stays full even if the live count later drops
     // (e.g. an undo, or another device's data merged differently).
     const items = CHALLENGES.map((c) => {

@@ -741,7 +741,7 @@ window.DictationView = (function () {
           correctCount++;
           batchMastered.add(w.id);
           if (window.FlashcardsMastery) {
-            window.FlashcardsMastery.pass(state.daily ? w.deckId : deck && deck.id, w.id, "w");
+            window.FlashcardsMastery.pass(state.daily ? w.deckId : deck && deck.id, w.id, "w", w.front);
           }
           // Deck mode persists correct answers so progress survives leaving the
           // session (daily mode is handled by recordDaily above).
@@ -799,7 +799,7 @@ window.DictationView = (function () {
               if (x.dataset.m === correct) x.classList.add("is-correct");
             });
             if (ok && window.FlashcardsMastery) {
-              window.FlashcardsMastery.pass(state.daily ? w.deckId : deck.id, w.id, "m");
+              window.FlashcardsMastery.pass(state.daily ? w.deckId : deck.id, w.id, "m", w.front);
             }
             if (!ok) {
               b.classList.add("is-wrong");

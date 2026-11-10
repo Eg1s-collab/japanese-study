@@ -144,12 +144,13 @@ window.FlashcardsDaily = (function () {
       const seen = new Set(d.progress && d.progress.cards ? d.progress.cards.seenIds : []);
       const done = new Set(d.progress && d.progress.learn ? d.progress.learn.completedIds : []);
       const stillU = new Set(d.progress && d.progress.cards ? (d.progress.cards.stillUnknownIds || []) : []);
+      const recs = M ? M.deckRecords(d.id) : {};
       for (const w of (d.words || [])) {
-        const mastered = !!(M && M.getRec(d.id, w.id));
+        const mastered = !!recs[w.id];
         const studied = seen.has(w.id) || done.has(w.id) || stillU.has(w.id) || mastered;
         if (!studied) continue;
         const ref = { deckId: d.id, wordId: w.id };
-        if (mastered && M.upgradeOnPass(d.id, w) > 0) near.push(ref);
+        if (mastered && M.upgradeOnPass(d.id, w, recs) > 0) near.push(ref);
         if (stillU.has(w.id)) unknown.push(ref);
         else passed.push(ref);
       }
