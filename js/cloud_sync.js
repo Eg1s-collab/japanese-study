@@ -1,13 +1,16 @@
 /**
  * Cloud sync via Firebase Auth (Google) + Firestore.
  *
- * Storage shape on Firestore:  /users/{uid}
- *   {
- *     bookmarks: [...] (mirror of jp_grammar_bookmarks_v1),
- *     conjugation: {...} (mirror of jp_conjugation_progress_v1),
- *     updatedAt: serverTimestamp,
- *     clientTs:  Date.now()
- *   }
+ * Storage shape on Firestore:
+ *   /users/{uid}            { chunks: n, updatedAt: serverTimestamp, clientTs: Date.now() }
+ *   /users/{uid}/sync/c{i}  { data: "<slice i of the JSON payload>", clientTs }
+ * The payload is { bookmarks, conjugation, flashcards, lessonProgress, … }
+ * (one field per synced localStorage key), stored as a JSON string split
+ * across chunk docs. A single Firestore doc is capped at 1 MiB, which a few
+ * imported flashcard decks easily exceed, and a JSON string also avoids
+ * Firestore's limits on values (undefined, nested arrays). All chunks and
+ * the top doc are written in one atomic batch.
+ * Legacy shape (still read): every payload field directly on /users/{uid}.
  *
  * Sync model:
  *   • on sign-in: pull cloud doc, merge with local, write merged back to both
@@ -24,7 +27,8 @@
  *       - conjugation per (level/kind/key/form): newer lastTs wins;
  *         on tie, take max(tries, correct)
  *
- * Security: Firestore rules enforce  request.auth.uid == doc id.
+ * Security: Firestore rules (firestore.rules) only let a signed-in user read
+ * and write /users/{their uid} and its subcollections.
  */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
 import {
@@ -32,7 +36,7 @@ import {
   getRedirectResult, signOut, onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {
-  getFirestore, doc, getDoc, setDoc, serverTimestamp
+  getFirestore, doc, getDoc, writeBatch, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -67,6 +71,7 @@ let pushTimer = null;
 let initialPullDone = false;
 let authReady = false;
 let lastClientTs = 0;   // clientTs of the cloud doc as this tab last wrote/read it
+let cloudChunks = 0;    // chunk count of the cloud doc as last seen (to delete leftovers)
 let syncing = null;     // in-flight sync promise
 let syncAgain = null;   // reason for one more sync requested while one ran
 
@@ -159,10 +164,49 @@ function readLocal() {
   };
 }
 
+// ≤ 300k UTF-16 code units → ≤ ~900 KB of UTF-8, safely under the 1 MiB doc cap.
+const CHUNK_UNITS = 300000;
+function chunkRef(i) { return doc(db, "users", currentUser.uid, "sync", "c" + i); }
+
+function splitChunks(str) {
+  const out = [];
+  let i = 0;
+  while (i < str.length) {
+    let end = Math.min(i + CHUNK_UNITS, str.length);
+    // never split a surrogate pair (Firestore would mangle the lone halves)
+    const c = str.charCodeAt(end - 1);
+    if (end < str.length && c >= 0xd800 && c <= 0xdbff) end--;
+    out.push(str.slice(i, end));
+    i = end;
+  }
+  return out.length ? out : [""];
+}
+
+// top: data of /users/{uid}. Returns the payload object, or null.
+async function readPayload(top) {
+  if (!top) return null;
+  if (!top.chunks) return top; // legacy: fields directly on the top doc
+  const snaps = await Promise.all(
+    Array.from({ length: top.chunks }, (_, i) => getDoc(chunkRef(i))));
+  const json = snaps.map((sn) => {
+    const d = sn.exists() ? sn.data() : null;
+    if (!d || d.clientTs !== top.clientTs) throw new Error("sync chunk out of date");
+    return d.data;
+  }).join("");
+  return JSON.parse(json);
+}
+
 async function writeCloud(ref, data) {
   const ts = Date.now();
-  await setDoc(ref, { ...data, updatedAt: serverTimestamp(), clientTs: ts });
+  const parts = splitChunks(JSON.stringify(data));
+  const batch = writeBatch(db);
+  parts.forEach((part, i) => batch.set(chunkRef(i), { data: part, clientTs: ts }));
+  for (let i = parts.length; i < cloudChunks; i++) batch.delete(chunkRef(i));
+  // set() replaces the doc, dropping any legacy payload fields
+  batch.set(ref, { chunks: parts.length, updatedAt: serverTimestamp(), clientTs: ts });
+  await batch.commit();
   lastClientTs = ts;
+  cloudChunks = parts.length;
 }
 
 // reason: "signin" | "push" | "resume"
@@ -172,15 +216,17 @@ async function mergeWithCloud(reason) {
   try {
     const ref = doc(db, "users", currentUser.uid);
     const snap = await getDoc(ref);
-    const cloud = snap.exists() ? snap.data() : null;
+    const top = snap.exists() ? snap.data() : null;
+    cloudChunks = (top && top.chunks) || 0;
 
     // Nobody else wrote since our last sync: a push overwrites with local
     // (deletions included), a resume has nothing to pull.
-    if (reason !== "signin" && cloud && lastClientTs && cloud.clientTs === lastClientTs) {
+    if (reason !== "signin" && top && lastClientTs && top.clientTs === lastClientTs) {
       if (reason === "push") await writeCloud(ref, readLocal());
       setStatus("ซิงก์แล้ว ✓");
       return;
     }
+    const cloud = await readPayload(top);
 
     const before = localSnapshot();
     const localBm = JSON.parse(localStorage.getItem(BM_KEY) || "[]");
@@ -294,7 +340,8 @@ async function mergeWithCloud(reason) {
     }
   } catch (e) {
     console.error("[cloud] sync (" + reason + ")", e);
-    setStatus(reason === "push" ? "บันทึกไม่สำเร็จ" : "ซิงก์ไม่สำเร็จ", true);
+    const code = (e && (e.code || e.message)) || "";
+    setStatus((reason === "push" ? "บันทึกไม่สำเร็จ" : "ซิงก์ไม่สำเร็จ") + (code ? " (" + code + ")" : ""), true);
   }
 }
 
@@ -374,6 +421,7 @@ onAuthStateChanged(auth, async (u) => {
   currentUser = u;
   initialPullDone = false;
   lastClientTs = 0;
+  cloudChunks = 0;
   updateAuthUI();
   // Signal "auth state is now known" exactly once, so consumers (e.g. the
   // starter-deck seed) never act while sign-in is still resolving.
