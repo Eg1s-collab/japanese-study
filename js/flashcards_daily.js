@@ -1,11 +1,13 @@
 /**
  * Daily Words — a curated mini-set of N words for the day.
  *
- * Composition: up to 80% pulled from words that are currently "still
- * unknown" (most recently swiped "ยังไม่ได้" without a follow-up pass),
- * the remaining 20% from any other studied word (in seenIds or
- * completedIds). All daily picks must have been studied at least once
- * in Flash Cards or Learn mode.
+ * Composition: first up to 30% from words one Flash Card pass away from a
+ * higher mastery tier (FlashcardsMastery.upgradeOnPass — e.g. their 3rd
+ * study day makes them Rare), then up to 80% from words that are currently
+ * "still unknown" (most recently swiped "ยังไม่ได้" without a follow-up
+ * pass), the rest from any other studied word (in seenIds, completedIds
+ * or with a mastery record). All daily picks must have been studied at
+ * least once in Flash Cards, Learn or ฟังเขียน.
  *
  * Each item moves through states as the user progresses:
  *   pending     → ยังไม่ได้ทำการ์ดวันนี้
@@ -32,6 +34,7 @@ window.FlashcardsDaily = (function () {
   const MIN_COUNT = 10;
   const MAX_COUNT = 500;
   const UNKNOWN_RATIO = 0.8;
+  const NEAR_RATIO = 0.3;
 
   function thailandDate() {
     if (window.FlashcardsStreak) return window.FlashcardsStreak.thailandDate();
@@ -119,16 +122,21 @@ window.FlashcardsDaily = (function () {
   }
 
   // Pull all words across all decks and bucket by candidate status.
+  // near:    one Flash Card pass today raises its mastery tier
   // unknown: currently in stillUnknownIds (sticky tag, see storage)
-  // passed:  studied at least once (seenIds or completedIds) and NOT
-  //          currently in stillUnknownIds.
+  // passed:  studied at least once (seenIds, completedIds or a mastery
+  //          record) and NOT currently in stillUnknownIds.
+  // A near word is also left in its unknown/passed bucket; buildPool
+  // dedupes.
   // If `allowDeckIds` is a non-empty Set, only decks whose id is in it
   // contribute candidates.
   function gatherCandidates(allowDeckIds) {
     const FS = window.FlashcardsStorage;
-    if (!FS) return { unknown: [], passed: [] };
+    if (!FS) return { near: [], unknown: [], passed: [] };
+    const M = window.FlashcardsMastery;
     const data = FS.load();
     const filter = (allowDeckIds && allowDeckIds.size) ? allowDeckIds : null;
+    const near = [];
     const unknown = [];
     const passed = [];
     for (const d of (data.decks || [])) {
@@ -137,26 +145,39 @@ window.FlashcardsDaily = (function () {
       const done = new Set(d.progress && d.progress.learn ? d.progress.learn.completedIds : []);
       const stillU = new Set(d.progress && d.progress.cards ? (d.progress.cards.stillUnknownIds || []) : []);
       for (const w of (d.words || [])) {
-        const studied = seen.has(w.id) || done.has(w.id) || stillU.has(w.id);
+        const mastered = !!(M && M.getRec(d.id, w.id));
+        const studied = seen.has(w.id) || done.has(w.id) || stillU.has(w.id) || mastered;
         if (!studied) continue;
         const ref = { deckId: d.id, wordId: w.id };
+        if (mastered && M.upgradeOnPass(d.id, w) > 0) near.push(ref);
         if (stillU.has(w.id)) unknown.push(ref);
         else passed.push(ref);
       }
     }
-    return { unknown, passed };
+    return { near, unknown, passed };
   }
 
   function buildPool(goalCount, deckIds) {
     const allow = new Set(cleanDeckIds(deckIds));
-    const { unknown, passed } = gatherCandidates(allow);
+    const { near, unknown, passed } = gatherCandidates(allow);
     const target = clampCount(goalCount);
-    const targetUnknown = Math.floor(target * UNKNOWN_RATIO);
-    const pickedUnknown = shuffle(unknown).slice(0, Math.min(targetUnknown, unknown.length));
-    const remaining = target - pickedUnknown.length;
-    const pickedPassed = shuffle(passed).slice(0, Math.min(remaining, passed.length));
-    // Mix the two so the user doesn't see all unknowns in a block first.
-    const merged = shuffle(pickedUnknown.concat(pickedPassed));
+    const taken = new Set();
+    const key = (ref) => ref.deckId + "::" + ref.wordId;
+    function take(list, max) {
+      const out = [];
+      for (const ref of shuffle(list)) {
+        if (out.length >= max) break;
+        if (taken.has(key(ref))) continue;
+        taken.add(key(ref));
+        out.push(ref);
+      }
+      return out;
+    }
+    const pickedNear = take(near, Math.floor(target * NEAR_RATIO));
+    const pickedUnknown = take(unknown, Math.min(Math.floor(target * UNKNOWN_RATIO), target - pickedNear.length));
+    const pickedPassed = take(passed, target - pickedNear.length - pickedUnknown.length);
+    // Mix them so the user doesn't see all unknowns in a block first.
+    const merged = shuffle(pickedNear.concat(pickedUnknown, pickedPassed));
     return merged.map((ref) => ({ deckId: ref.deckId, wordId: ref.wordId, state: "pending" }));
   }
 

@@ -1431,6 +1431,16 @@ h3 { margin: 0 0 6px; font-size: 16px; }
 .fc-loot-lv { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; margin-top: 12px; font-size: 13px; }
 .fc-loot-lv .progress { margin: 0; }
 
+/* ---------- forecast + near-tier-up ---------- */
+.fc-forecast { margin-top: 12px; font-size: 13px; }
+.fc-near-line { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
+.fc-near-line span { font-weight: 600; }
+.fc-near-badge {
+  margin: 10px auto 0; width: fit-content; padding: 3px 10px; border-radius: 999px;
+  border: 1px solid currentColor; font-size: 12px; font-weight: 600;
+  background: rgba(0, 0, 0, 0.25);
+}
+
 @media (max-width: 600px) {
   .fc-mode-row .btn-row { width: 100%; justify-content: flex-end; }
   .fc-chunk-row { flex-direction: column; align-items: stretch; }
