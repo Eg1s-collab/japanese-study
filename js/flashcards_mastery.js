@@ -15,6 +15,9 @@
  *   4 Unique   Rare + ผ่าน ≥ 5 วัน และวันแรกถึงวันล่าสุดห่างกัน ≥ 30 วัน
  * คำที่ฝึกฟังเขียนไม่ได้ (ไม่มีคำอ่าน) ไม่ต้องมี socket w
  *
+ * คำซีด: คำระดับ Magic ขึ้นไปที่ไม่ได้ทวนผ่านมา ≥ FADE_DAYS วัน ระดับไม่ลด
+ * แค่ขึ้นสถานะซีด แล้วคำประจำวันจะดึงมาให้ทวน ผ่านครั้งเดียวก็กลับมาสด
+ *
  * วัน = วันที่เวลาไทย แปลงเป็นเลขวัน (epoch day) ให้เก็บได้เล็ก
  *
  * Shape:
@@ -46,6 +49,7 @@ window.FlashcardsMastery = (function () {
   const LOG_KEEP = 90;
   const RATE_WINDOW = 14;
   const MIN_FORECAST_DAYS = 3;
+  const FADE_DAYS = 21;
 
   const TIERS = [
     { key: "none",   label: "ยังไม่เจอ" },
@@ -194,6 +198,14 @@ window.FlashcardsMastery = (function () {
     if (!rec || isGone(rec)) return 0;
     return Math.max(rec.t || 0, computedTier(rec, needsWrite));
   }
+  // Days since a faded word was last studied, or 0 if it isn't faded.
+  // Only Magic+ words fade; backfilled records with no study days don't.
+  function fadedDays(rec, t) {
+    if (!rec || isGone(rec) || !rec.d.length) return 0;
+    if (!((rec.t || 0) >= 2 || (rec.r > 0 && rec.m > 0))) return 0;
+    const since = (t === undefined ? today() : t) - rec.d[rec.d.length - 1];
+    return since >= FADE_DAYS ? since : 0;
+  }
   function computedTier(rec, needsWrite) {
     const n = rec.d.length;
     if (hasSockets(rec, needsWrite) && n >= RARE_DAYS) {
@@ -251,13 +263,14 @@ window.FlashcardsMastery = (function () {
    *     rareLater              — one day short but already reviewed today
    *     uniqueToday            — reviewing today makes them Unique
    *     uniqueAt               — earliest later Date a Rare word can become Unique (or null)
+   *     faded, fadedMax        — faded words and the longest gap (days)
    *   }
    *   rareMinDays: fewest calendar days before every word could be Rare
    *                (day-gating only), used by deckRareForecast
    */
   function deckSummary(deck) {
     const counts = [0, 0, 0, 0, 0];
-    const next = { needRead: 0, needMeaning: 0, needWrite: 0, rareToday: 0, rareLater: 0, uniqueToday: 0, uniqueAt: null };
+    const next = { needRead: 0, needMeaning: 0, needWrite: 0, rareToday: 0, rareLater: 0, uniqueToday: 0, uniqueAt: null, faded: 0, fadedMax: 0 };
     if (!deck || !Array.isArray(deck.words)) return { counts, total: 0, next, rareMinDays: 0 };
     const state = load();
     let changed = backfill(state, deck);
@@ -279,6 +292,8 @@ window.FlashcardsMastery = (function () {
       if (!rec) return;
       // Records from before `t` existed: remember the tier they reached.
       if (tier > (rec.t || 0)) { rec.t = tier; changed = true; }
+      const fd = fadedDays(rec, t);
+      if (fd) { next.faded++; next.fadedMax = Math.max(next.fadedMax, fd); }
       if (tier === 1) {
         if (rec.r > 0 && !(rec.m > 0)) next.needMeaning++;
         else if (rec.m > 0 && !(rec.r > 0)) next.needRead++;
@@ -352,6 +367,8 @@ window.FlashcardsMastery = (function () {
     const counts = [0, 0, 0, 0, 0];
     let xp = bankedXp(state);
     let words = 0;
+    let faded = 0;
+    const t = today();
     liveDecks().forEach((deck) => {
       const recs = state.decks[deck.id] || {};
       (deck.words || []).forEach((w) => {
@@ -359,10 +376,11 @@ window.FlashcardsMastery = (function () {
         const nw = needsWriteFor(w.front);
         counts[rarityOf(rec, nw)]++;
         xp += recXp(rec, nw);
+        if (fadedDays(rec, t)) faded++;
         words++;
       });
     });
-    return Object.assign(levelInfo(xp), { counts, words });
+    return Object.assign(levelInfo(xp), { counts, words, faded });
   }
 
   /* ---------- loot journal ----------
@@ -403,9 +421,10 @@ window.FlashcardsMastery = (function () {
 
     // Start XP is filled in lazily by peekLoot (total minus journal.xp), so
     // a pass never has to scan the whole collection.
-    if (!journal || journal.shown) journal = { startXp: null, xp: 0, ups: {} };
+    if (!journal || journal.shown) journal = { startXp: null, xp: 0, ups: {}, revived: {} };
     journal.xp += delta;
     const key = deckId + "::" + wordId;
+    if (fadedDays(before, t) && !fadedDays(after, t)) journal.revived[key] = front;
     const prev = journal.ups[key];
     const from = prev ? prev.from : tierBefore;
     if (tierAfter > from) journal.ups[key] = { from, to: tierAfter, front };
@@ -414,13 +433,15 @@ window.FlashcardsMastery = (function () {
   /**
    * The current loot (and marks it seen), or null if nothing was earned:
    *   { xp, before: levelInfo, after: levelInfo,
-   *     newWords, magic: [front], rare: [front], unique: [front] }
+   *     newWords, magic: [front], rare: [front], unique: [front],
+   *     revived: [front] }  (faded words brought back)
    */
   function peekLoot() {
     const j = journal;
     if (!j) return null;
     const ups = Object.values(j.ups);
-    if (j.xp <= 0 && !ups.length) return null;
+    const revived = Object.values(j.revived);
+    if (j.xp <= 0 && !ups.length && !revived.length) return null;
     j.shown = true;
     if (j.startXp === null) j.startXp = profile().xp - j.xp;
     const pick = (t) => ups.filter((u) => u.to === t).map((u) => u.front);
@@ -431,7 +452,8 @@ window.FlashcardsMastery = (function () {
       newWords: ups.filter((u) => u.from === 0).length,
       magic: pick(2),
       rare: pick(3),
-      unique: pick(4)
+      unique: pick(4),
+      revived
     };
   }
   function dismissLoot() { journal = null; }
@@ -597,7 +619,7 @@ window.FlashcardsMastery = (function () {
     getRec, rarityOf, deckSummary,
     profile, levelInfo, peekLoot, dismissLoot,
     levelForecast, deckRareForecast, upgradeOnPass,
-    getLog, dayNum, deckRecords,
+    getLog, dayNum, deckRecords, fadedDays, FADE_DAYS,
     getForCloud, setFromCloud, mergeForCloud
   };
 })();
