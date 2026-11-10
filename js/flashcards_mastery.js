@@ -20,13 +20,14 @@
  * Shape:
  *   {
  *     decks: { [deckId]: { [wordId]: { r, m, w, d: [dayNum, ...] } } },
- *     log:   { [dayNum]: { xp, rare, unique } },
+ *     log:   { [dayNum]: { xp, rare, unique, r, m, w } },
  *     updatedAt: number
  *   }
  * r/m/w = จำนวนครั้งที่ผ่าน, d = วันที่ผ่าน (ไม่ซ้ำ เรียงจากเก่า) เก็บวันแรก
  * + MAX_DAYS-1 วันล่าสุด
- * log = XP ที่ได้ + จำนวนคำที่ขึ้น Rare/Unique ในแต่ละวัน (เก็บ LOG_KEEP วัน)
- * ใช้คาดการณ์ว่าจะถึงเลเวล/ทั้งชุดเป็น Rare เมื่อไหร่
+ * log = XP ที่ได้, จำนวนคำที่ขึ้น Rare/Unique และจำนวนครั้งที่ผ่านแต่ละ socket
+ * ในแต่ละวัน (เก็บ LOG_KEEP วัน) ใช้คาดการณ์ว่าจะถึงเลเวล/ทั้งชุดเป็น Rare
+ * เมื่อไหร่ และนับความคืบหน้า Challenge รายเดือน
  *
  * Cross-device merge: รายคำ — r/m/w เอาค่าสูงสุด, d รวมกันแล้วตัดตาม MAX_DAYS;
  * log รายวันเอาค่าสูงสุดของแต่ละช่อง (แบบเดียวกับ streak)
@@ -331,6 +332,10 @@ window.FlashcardsMastery = (function () {
     const t = today();
     const day = state.log[t] || (state.log[t] = { xp: 0, rare: 0, unique: 0 });
     day.xp += delta;
+    SOCKETS.forEach((k) => {
+      const diff = ((after && after[k]) || 0) - ((before && before[k]) || 0);
+      if (diff) day[k] = (day[k] || 0) + diff;
+    });
     if (tierBefore < 3 && tierAfter >= 3) day.rare++;
     if (tierBefore < 4 && tierAfter >= 4) day.unique++;
     Object.keys(state.log).forEach((k) => { if (Number(k) <= t - LOG_KEEP) delete state.log[k]; });
@@ -387,6 +392,7 @@ window.FlashcardsMastery = (function () {
     return { ready: true, span, xpPerDay: xp / span, rarePerDay: rare / span };
   }
   function addDays(n) { return dayToDate(today() + n); }
+  function getLog() { return load().log; }
 
   /**
    * Level projections:
@@ -486,11 +492,10 @@ window.FlashcardsMastery = (function () {
     new Set([...Object.keys(la), ...Object.keys(lb)]).forEach((k) => {
       const x = la[k] || {};
       const y = lb[k] || {};
-      merged.log[k] = {
-        xp: Math.max(x.xp || 0, y.xp || 0),
-        rare: Math.max(x.rare || 0, y.rare || 0),
-        unique: Math.max(x.unique || 0, y.unique || 0)
-      };
+      merged.log[k] = {};
+      ["xp", "rare", "unique", ...SOCKETS].forEach((f) => {
+        merged.log[k][f] = Math.max(x[f] || 0, y[f] || 0);
+      });
     });
     merged.updatedAt = Math.max((localState && localState.updatedAt) || 0, (cloudState && cloudState.updatedAt) || 0);
     return merged;
@@ -502,6 +507,7 @@ window.FlashcardsMastery = (function () {
     getRec, rarityOf, deckSummary,
     profile, levelInfo, peekLoot, dismissLoot,
     levelForecast, deckRareForecast, upgradeOnPass,
+    getLog, dayNum,
     getForCloud, setFromCloud, mergeForCloud
   };
 })();

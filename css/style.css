@@ -436,6 +436,16 @@ body {
   border-color: var(--ink);
   box-shadow: 0 0 0 2px var(--ink), inset 0 1px 0 var(--glass-highlight);
 }
+.theme-reward-title { margin-top: 14px; }
+.theme-swatch.locked { position: relative; cursor: not-allowed; }
+.theme-swatch.locked > span { filter: grayscale(0.85) brightness(0.55); }
+.theme-swatch.locked::after {
+  content: "🔒"; position: absolute; font-size: 12px;
+  right: -4px; bottom: -4px; line-height: 1;
+}
+.theme-swatch.locked:hover { transform: none; }
+.theme-lock-hint { margin-top: 8px; font-size: 12px; color: var(--muted); max-width: 220px; }
+.theme-lock-hint:empty { display: none; }
 
 @media (max-width: 600px) {
   .theme-popover { right: -4px; min-width: 200px; max-width: calc(100vw - 24px); }
@@ -1435,6 +1445,41 @@ h3 { margin: 0 0 6px; font-size: 16px; }
 .fc-forecast { margin-top: 12px; font-size: 13px; }
 .fc-near-line { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
 .fc-near-line span { font-weight: 600; }
+/* ---------- monthly challenges ---------- */
+.fc-ch-track { position: relative; margin: 18px 14px 46px 0; }
+.fc-ch-track .progress { height: 10px; margin: 0; }
+.fc-ch-reward {
+  position: absolute; top: -9px; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+.fc-ch-sw {
+  width: 26px; height: 26px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 11px;
+  border: 2px solid var(--line-strong); filter: grayscale(0.85) brightness(0.6);
+}
+.fc-ch-reward.is-reached .fc-ch-sw, .fc-ch-reward.is-unlocked .fc-ch-sw { filter: none; border-color: var(--ink); }
+.fc-ch-need { font-size: 11px; font-weight: 700; color: var(--ink); }
+.fc-ch-label { font-size: 10px; color: var(--muted); margin-top: -2px; }
+.fc-ch-note { margin: 0; font-size: 12px; }
+.fc-ch-list { margin-top: 10px; font-size: 13px; }
+.fc-ch-list summary { cursor: pointer; color: var(--accent); }
+.fc-ch-list ul { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 8px; }
+@media (min-width: 700px) { .fc-ch-list ul { grid-template-columns: 1fr 1fr; column-gap: 18px; } }
+.fc-ch-item { display: grid; grid-template-columns: 22px 1fr auto; gap: 2px 8px; align-items: center; }
+.fc-ch-item .progress { grid-column: 2 / 4; height: 5px; margin: 0; }
+.fc-ch-icon { text-align: center; }
+.fc-ch-val { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.fc-ch-item.is-done .fc-ch-icon { color: var(--ok); font-weight: 700; }
+.fc-ch-item.is-done .fc-ch-text { color: var(--muted); }
+.fc-loot-unlock {
+  margin-top: 10px; padding: 8px 12px; border-radius: 10px; font-weight: 600;
+  border: 1px solid currentColor; background: rgba(0, 0, 0, 0.2);
+}
+.fc-loot-ch { color: var(--ink); border-color: var(--line-strong); font-family: inherit; }
+.t-magic.fc-loot-unlock { color: var(--r-magic); }
+.t-rare.fc-loot-unlock { color: var(--r-rare); }
+.t-unique.fc-loot-unlock { color: var(--r-unique); }
+
 .fc-near-badge {
   margin: 10px auto 0; width: fit-content; padding: 3px 10px; border-radius: 999px;
   border: 1px solid currentColor; font-size: 12px; font-weight: 600;
