@@ -186,6 +186,11 @@ window.DictationView = (function () {
     return words.filter((w) => hasJapanese(w.front) && extractReadings(w.front));
   }
 
+  // Words the ฟังเขียน drill can quiz at all (has a reading to type).
+  function isDrillable(front) {
+    return hasJapanese(front) && !!extractReadings(front);
+  }
+
   function isReadEligible(front) {
     if (!hasJapanese(front) || !extractReadings(front)) return false;
     return !isKanaOnly(frontDisplay(front));
@@ -735,6 +740,9 @@ window.DictationView = (function () {
         if (ok) {
           correctCount++;
           batchMastered.add(w.id);
+          if (window.FlashcardsMastery) {
+            window.FlashcardsMastery.pass(state.daily ? w.deckId : deck && deck.id, w.id, "w");
+          }
           // Deck mode persists correct answers so progress survives leaving the
           // session (daily mode is handled by recordDaily above).
           if (!state.daily && deck) FS().markDictationDone(deck.id, w.id);
@@ -790,6 +798,9 @@ window.DictationView = (function () {
               x.disabled = true;
               if (x.dataset.m === correct) x.classList.add("is-correct");
             });
+            if (ok && window.FlashcardsMastery) {
+              window.FlashcardsMastery.pass(state.daily ? w.deckId : deck.id, w.id, "m");
+            }
             if (!ok) {
               b.classList.add("is-wrong");
               const wDeckId = state.daily ? w.deckId : deck.id;
@@ -912,5 +923,5 @@ window.DictationView = (function () {
     return root;
   }
 
-  return { renderDeckSession, renderDailySession, renderDailyReviewCard, deckStats, isReadEligible };
+  return { renderDeckSession, renderDailySession, renderDailyReviewCard, deckStats, isReadEligible, isDrillable };
 })();
