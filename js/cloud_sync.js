@@ -64,8 +64,9 @@ const FS_KEY = "jp_flashcards_streak_v1";
 const FD_KEY = "jp_flashcards_daily_v1";
 const DD_KEY = "jp_dictation_daily_v1";
 const FM_KEY = "jp_flashcards_mastery_v1";
+const FCH_KEY = "jp_flashcards_challenges_v1";
 
-const SYNC_KEYS = [BM_KEY, CJ_KEY, FC_KEY, LP_KEY, YJ_KEY, GK_KEY, DL_KEY, FS_KEY, FD_KEY, DD_KEY, FM_KEY];
+const SYNC_KEYS = [BM_KEY, CJ_KEY, FC_KEY, LP_KEY, YJ_KEY, GK_KEY, DL_KEY, FS_KEY, FD_KEY, DD_KEY, FM_KEY, FCH_KEY];
 
 let currentUser = null;
 let pushTimer = null;
@@ -162,7 +163,8 @@ function readLocal() {
     flashcardsStreak: JSON.parse(localStorage.getItem(FS_KEY) || "null") || { goal: 50, days: {}, updatedAt: 0 },
     flashcardsDaily: JSON.parse(localStorage.getItem(FD_KEY) || "null") || { goalCount: 100, date: "", items: [], updatedAt: 0 },
     dictationDaily: JSON.parse(localStorage.getItem(DD_KEY) || "null") || { goalCount: 50, date: "", items: [], updatedAt: 0 },
-    flashcardsMastery: JSON.parse(localStorage.getItem(FM_KEY) || "null") || { decks: {}, updatedAt: 0 }
+    flashcardsMastery: JSON.parse(localStorage.getItem(FM_KEY) || "null") || { decks: {}, updatedAt: 0 },
+    flashcardsChallenges: JSON.parse(localStorage.getItem(FCH_KEY) || "null") || { months: {}, unlocks: {}, updatedAt: 0 }
   };
 }
 
@@ -242,6 +244,7 @@ async function mergeWithCloud(reason) {
     const localFd = JSON.parse(localStorage.getItem(FD_KEY) || "null");
     const localDd = JSON.parse(localStorage.getItem(DD_KEY) || "null");
     const localFm = JSON.parse(localStorage.getItem(FM_KEY) || "null");
+    const localFch = JSON.parse(localStorage.getItem(FCH_KEY) || "null");
 
     const mergedBm = mergeBookmarks(cloud ? cloud.bookmarks : [], localBm);
     let mergedCj = mergeConj(cloud ? cloud.conjugation : {}, localCj);
@@ -305,6 +308,12 @@ async function mergeWithCloud(reason) {
       ? window.FlashcardsMastery.mergeForCloud(localFm, cloudFm)
       : (cloudFm || localFm || { decks: {}, updatedAt: 0 });
 
+    // Flashcards challenges: union of finished challenges + theme unlocks
+    const cloudFch = cloud && cloud.flashcardsChallenges ? cloud.flashcardsChallenges : null;
+    const mergedFch = window.FlashcardsChallenges
+      ? window.FlashcardsChallenges.mergeForCloud(localFch, cloudFch)
+      : (cloudFch || localFch || { months: {}, unlocks: {}, updatedAt: 0 });
+
     localStorage.setItem(BM_KEY, JSON.stringify(mergedBm));
     localStorage.setItem(CJ_KEY, JSON.stringify(mergedCj));
     localStorage.setItem(FC_KEY, JSON.stringify(mergedFc));
@@ -316,6 +325,7 @@ async function mergeWithCloud(reason) {
     localStorage.setItem(FD_KEY, JSON.stringify(mergedFd));
     localStorage.setItem(DD_KEY, JSON.stringify(mergedDd));
     localStorage.setItem(FM_KEY, JSON.stringify(mergedFm));
+    localStorage.setItem(FCH_KEY, JSON.stringify(mergedFch));
     if (window.FlashcardsStreak && window.FlashcardsStreak.setFromCloud) {
       window.FlashcardsStreak.setFromCloud(mergedFs);
     }
@@ -337,7 +347,8 @@ async function mergeWithCloud(reason) {
       flashcardsStreak: mergedFs,
       flashcardsDaily: mergedFd,
       dictationDaily: mergedDd,
-      flashcardsMastery: mergedFm
+      flashcardsMastery: mergedFm,
+      flashcardsChallenges: mergedFch
     });
 
     initialPullDone = true;

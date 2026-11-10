@@ -69,6 +69,38 @@
       orb2:   "rgba(236, 194, 74, 0.45)",
       orb3:   "rgba(200, 154, 42, 0.40)",
     },
+    // Reward themes — unlocked by finishing monthly flashcard challenges
+    // (FlashcardsChallenges.REWARDS). Colors follow POE item rarities.
+    magic: {
+      label: "Magic",
+      reward: true,
+      accent: "#9fa1ff",
+      strong: "#8a8cff",
+      deep:   "#5457d6",
+      orb1:   "rgba(138, 140, 255, 0.55)",
+      orb2:   "rgba(84, 87, 214, 0.45)",
+      orb3:   "rgba(159, 161, 255, 0.35)",
+    },
+    rare: {
+      label: "Rare",
+      reward: true,
+      accent: "#ffe27a",
+      strong: "#f2d45c",
+      deep:   "#b8941f",
+      orb1:   "rgba(242, 212, 92, 0.50)",
+      orb2:   "rgba(184, 148, 31, 0.45)",
+      orb3:   "rgba(255, 226, 122, 0.30)",
+    },
+    unique: {
+      label: "Unique",
+      reward: true,
+      accent: "#f0a060",
+      strong: "#e8893c",
+      deep:   "#a8541c",
+      orb1:   "rgba(232, 137, 60, 0.55)",
+      orb2:   "rgba(168, 84, 28, 0.45)",
+      orb3:   "rgba(240, 160, 96, 0.35)",
+    },
     sumi: {
       label: "墨",
       accent: "#c8c0d2",
@@ -114,9 +146,33 @@
       }
       s.classList.toggle("active", key === themeKey);
     });
+    paintLocks();
     // paint the current-color dot on the button
     const dot = document.querySelector(".theme-btn-dot");
     if (dot) dot.style.background = `linear-gradient(135deg, ${t.accent}, ${t.deep})`;
+  }
+
+  // A reward theme is locked until FlashcardsChallenges records its unlock.
+  function isLocked(key) {
+    const def = THEMES[key];
+    if (!def || !def.reward) return false;
+    const FC = window.FlashcardsChallenges;
+    return !(FC && FC.isUnlocked(key));
+  }
+  function paintLocks() {
+    const hint = document.querySelector(".theme-lock-hint");
+    if (hint) hint.textContent = "";
+    document.querySelectorAll(".theme-swatch").forEach((s) => {
+      const key = s.dataset.theme;
+      if (!THEMES[key] || !THEMES[key].reward) return;
+      const locked = isLocked(key);
+      s.classList.toggle("locked", locked);
+      const FC = window.FlashcardsChallenges;
+      const r = FC && FC.rewardFor(key);
+      s.title = locked && r
+        ? `🔒 ${THEMES[key].label} — ทำ Challenge บัตรคำให้ครบ ${r.need} ข้อในเดือนเดียวเพื่อปลดล็อก`
+        : `${THEMES[key].label} (ธีมรางวัล)`;
+    });
   }
 
   function load() {
@@ -146,12 +202,18 @@
 
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
+      if (pop.hidden) paintLocks();
       setOpen(pop.hidden);
     });
     pop.addEventListener("click", (e) => {
       const sw = e.target.closest(".theme-swatch");
       if (!sw) return;
       const key = sw.dataset.theme;
+      if (isLocked(key)) {
+        const hint = pop.querySelector(".theme-lock-hint");
+        if (hint) hint.textContent = sw.title;
+        return;
+      }
       apply(key);
       save(key);
       setOpen(false);
@@ -173,5 +235,5 @@
   }
 
   // expose for debugging
-  window.__theme = { apply, THEMES };
+  window.__theme = { apply, THEMES, paintLocks };
 })();

@@ -228,37 +228,105 @@ window.FlashcardsView = (function () {
 
   // POE-style drop summary shown when the user returns from a session; it
   // stays until closed or until the next study pass starts a new one.
+  // Challenges finished / themes unlocked since the summary was last closed.
+  const pendingAwards = { done: [], unlocked: [] };
+  function collectAwards() {
+    const FC = window.FlashcardsChallenges;
+    if (!FC) return;
+    const r = FC.check();
+    pendingAwards.done.push(...r.newlyDone);
+    pendingAwards.unlocked.push(...r.newlyUnlocked);
+    if (r.newlyUnlocked.length && window.__theme) window.__theme.paintLocks();
+  }
+
   function renderLootCard() {
+    collectAwards();
     const loot = window.FlashcardsMastery && window.FlashcardsMastery.peekLoot();
-    if (!loot) return null;
-    const leveled = loot.after.level > loot.before.level;
+    const hasAwards = pendingAwards.done.length || pendingAwards.unlocked.length;
+    if (!loot && !hasAwards) return null;
+    const leveled = !!loot && loot.after.level > loot.before.level;
     const names = (list, cls) => list.slice(0, 8).map((f) =>
       `<span class="fc-loot-word ${cls}">${escapeHtml(plainFront(f))}</span>`).join("") +
       (list.length > 8 ? `<span class="subtle">+${list.length - 8}</span>` : "");
     const rows = [];
-    if (loot.unique.length) rows.push(`<div class="fc-loot-row"><b class="t-unique">🟧 Unique ${loot.unique.length}</b>${names(loot.unique, "t-unique")}</div>`);
-    if (loot.rare.length) rows.push(`<div class="fc-loot-row"><b class="t-rare">🟨 Rare ${loot.rare.length}</b>${names(loot.rare, "t-rare")}</div>`);
-    if (loot.magic.length) rows.push(`<div class="fc-loot-row"><b class="t-magic">🟦 Magic +${loot.magic.length}</b></div>`);
-    if (loot.newWords) rows.push(`<div class="fc-loot-row"><b class="t-normal">⬜ คำใหม่ +${loot.newWords}</b></div>`);
+    pendingAwards.unlocked.forEach((r) => rows.push(
+      `<div class="fc-loot-unlock t-${r.theme}">🎨 ปลดล็อกธีม <b>${escapeHtml(r.label)}</b> แล้ว — เลือกได้ที่ปุ่มสีมุมขวาบน</div>`));
+    if (pendingAwards.done.length) rows.push(`<div class="fc-loot-row"><b>🏆 Challenge สำเร็จ</b>${
+      pendingAwards.done.map((c) => `<span class="fc-loot-word fc-loot-ch">${c.icon} ${escapeHtml(c.label)}</span>`).join("")}</div>`);
+    if (loot) {
+      if (loot.unique.length) rows.push(`<div class="fc-loot-row"><b class="t-unique">🟧 Unique ${loot.unique.length}</b>${names(loot.unique, "t-unique")}</div>`);
+      if (loot.rare.length) rows.push(`<div class="fc-loot-row"><b class="t-rare">🟨 Rare ${loot.rare.length}</b>${names(loot.rare, "t-rare")}</div>`);
+      if (loot.magic.length) rows.push(`<div class="fc-loot-row"><b class="t-magic">🟦 Magic +${loot.magic.length}</b></div>`);
+      if (loot.newWords) rows.push(`<div class="fc-loot-row"><b class="t-normal">⬜ คำใหม่ +${loot.newWords}</b></div>`);
+    }
     const wrap = document.createElement("section");
     wrap.className = "card fc-loot" + (leveled ? " leveled" : "");
     wrap.innerHTML = `
       <div class="fc-loot-head">
         <h3 style="margin:0;">✦ สรุปรอบ</h3>
-        <span class="fc-loot-xp">${loot.xp >= 0 ? "+" : ""}${fmtNum(loot.xp)} XP</span>
+        ${loot ? `<span class="fc-loot-xp">${loot.xp >= 0 ? "+" : ""}${fmtNum(loot.xp)} XP</span>` : `<span class="fc-loot-xp"></span>`}
         <button class="btn ghost fc-loot-close" aria-label="ปิด">✕</button>
       </div>
       ${leveled ? `<div class="fc-loot-lvup">⬆ เลเวลอัป! Lv ${loot.before.level} → <b>Lv ${loot.after.level}</b></div>` : ""}
       ${rows.join("")}
-      <div class="fc-loot-lv">
+      ${loot ? `<div class="fc-loot-lv">
         <span>Lv ${loot.after.level}</span>
         <div class="progress fc-char-xp"><div class="bar" style="width:${loot.after.pct}%"></div></div>
         <span class="subtle">${loot.after.pct}%</span>
-      </div>`;
+      </div>` : ""}`;
     wrap.querySelector(".fc-loot-close").addEventListener("click", () => {
       window.FlashcardsMastery.dismissLoot();
+      pendingAwards.done = [];
+      pendingAwards.unlocked = [];
       wrap.remove();
     });
+    return wrap;
+  }
+
+  // Monthly challenge card (flashcards home): reward track + task list.
+  function renderChallengePanel() {
+    const FC = window.FlashcardsChallenges;
+    if (!FC) return null;
+    const st = FC.status();
+    const themes = window.__theme ? window.__theme.THEMES : {};
+    const [y, m] = st.month.split("-").map(Number);
+    const monthLabel = new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("th-TH", { month: "long", timeZone: "UTC" });
+    const pct = Math.round((st.doneCount / st.total) * 100);
+    const track = st.rewards.map((r) => {
+      const t = themes[r.theme];
+      const sw = t ? `background:linear-gradient(135deg, ${t.accent}, ${t.deep})` : "";
+      const reached = st.doneCount >= r.need;
+      return `<div class="fc-ch-reward ${r.unlocked ? "is-unlocked" : ""} ${reached ? "is-reached" : ""}" style="left:${(r.need / st.total) * 100}%">
+        <span class="fc-ch-sw" style="${sw}">${r.unlocked ? "" : "🔒"}</span>
+        <span class="fc-ch-need">${r.need}</span>
+        <span class="fc-ch-label">${escapeHtml(r.label)}</span>
+      </div>`;
+    }).join("");
+    const items = st.items.slice().sort((a, b) => (a.done - b.done)).map((it) => {
+      const p = Math.round((it.value / it.target) * 100);
+      return `<li class="fc-ch-item ${it.done ? "is-done" : ""}">
+        <span class="fc-ch-icon">${it.done ? "✓" : it.icon}</span>
+        <span class="fc-ch-text">${escapeHtml(it.label)}</span>
+        <span class="fc-ch-val">${fmtNum(it.value)}/${fmtNum(it.target)}</span>
+        <div class="progress ${it.done ? "ok" : ""}"><div class="bar" style="width:${p}%"></div></div>
+      </li>`;
+    }).join("");
+    const wrap = document.createElement("section");
+    wrap.className = "card fc-ch";
+    wrap.innerHTML = `
+      <div class="fc-mastery-head">
+        <h3 style="margin:0;">🏆 Challenge เดือน${escapeHtml(monthLabel)}</h3>
+        <span class="qprog">${st.doneCount} / ${st.total} · เหลือ ${st.daysLeft} วัน</span>
+      </div>
+      <div class="fc-ch-track">
+        <div class="progress"><div class="bar" style="width:${pct}%"></div></div>
+        ${track}
+      </div>
+      <p class="subtle fc-ch-note">ทำครบ 4 / 8 / 12 ข้อในเดือนเดียวเพื่อปลดล็อกธีมรางวัล (ปลดแล้วใช้ได้ตลอด)</p>
+      <details class="fc-ch-list">
+        <summary>ดูภารกิจทั้งหมด</summary>
+        <ul>${items}</ul>
+      </details>`;
     return wrap;
   }
 
@@ -941,6 +1009,8 @@ window.FlashcardsView = (function () {
       }
       const charPanel = renderCharacterPanel();
       if (charPanel) root.querySelector("#fc-char-slot").appendChild(charPanel);
+      const chPanel = renderChallengePanel();
+      if (chPanel) root.querySelector("#fc-char-slot").appendChild(chPanel);
       root.querySelector("#fc-streak-slot").appendChild(renderStreakPanel());
     }
     const body = root.querySelector("#fc-body");

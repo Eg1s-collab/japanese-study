@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="日本語" />
-  <link rel="stylesheet" href="css/style.css?v=20261110c" />
+  <link rel="stylesheet" href="css/style.css?v=20261110e" />
 </head>
 <body>
   <div class="ambient" aria-hidden="true">
@@ -58,6 +58,13 @@
             <button class="theme-swatch" data-theme="kogane" title="黄金 ทอง" type="button"><span></span></button>
             <button class="theme-swatch" data-theme="sumi" title="墨 สุมิ (mono)" type="button"><span></span></button>
           </div>
+          <div class="theme-popover-title theme-reward-title">🏆 ธีมรางวัล</div>
+          <div class="theme-grid">
+            <button class="theme-swatch" data-theme="magic" title="Magic" type="button"><span></span></button>
+            <button class="theme-swatch" data-theme="rare" title="Rare" type="button"><span></span></button>
+            <button class="theme-swatch" data-theme="unique" title="Unique" type="button"><span></span></button>
+          </div>
+          <div class="theme-lock-hint"></div>
         </div>
       </div>
       <div class="level-wrap">
@@ -112,7 +119,7 @@
     <span>เนื้อหา N5 (Minna I 1–25) · N4 (Minna II 26–50) · N3 (JLPT N3 文法)</span>
   </footer>
 
-  <script src="js/theme.js?v=20260530f"></script>
+  <script src="js/theme.js?v=20261110a"></script>
   <script src="js/tts.js?v=20261110b"></script>
   <script src="js/data/n5/units.js?v=20260516j"></script>
   <script src="js/data/n5/conjugation.js?v=20260516j"></script>
@@ -129,7 +136,8 @@
   <script src="js/storage.js?v=20260516j"></script>
   <script src="js/conj_storage.js?v=20260516j"></script>
   <script src="js/flashcards_streak.js?v=20260522e"></script>
-  <script src="js/flashcards_mastery.js?v=20261110e"></script>
+  <script src="js/flashcards_mastery.js?v=20261110f"></script>
+  <script src="js/flashcards_challenges.js?v=20261110b"></script>
   <script src="js/flashcards_storage.js?v=20261110a"></script>
   <script src="js/flashcards_daily.js?v=20261110a"></script>
   <script src="js/dictation_daily.js?v=20260604a"></script>
@@ -143,17 +151,17 @@
   <script src="js/views/quiz.js?v=20260619a"></script>
   <script src="js/views/particles.js?v=20260522g"></script>
   <script src="js/views/conjugation.js?v=20260516n"></script>
-  <script src="js/views/flashcards.js?v=20261110e"></script>
+  <script src="js/views/flashcards.js?v=20261110f"></script>
   <script src="js/views/dictation.js?v=20261110a"></script>
   <script src="js/views/arrange.js?v=20260523b"></script>
   <script src="js/views/yojijukugo.js?v=20261104a"></script>
   <script src="js/views/bookmarks.js?v=20260516j"></script>
   <script src="js/app.js?v=20260717a"></script>
-  <script type="module" src="js/cloud_sync.js?v=20261110c"></script>
+  <script type="module" src="js/cloud_sync.js?v=20261110d"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("sw.js?v=20261110f").catch((e) => {
+        navigator.serviceWorker.register("sw.js?v=20261110g").catch((e) => {
           console.warn("[sw] registration failed", e);
         });
       });
