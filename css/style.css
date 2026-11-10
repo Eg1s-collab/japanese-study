@@ -1395,6 +1395,42 @@ h3 { margin: 0 0 6px; font-size: 16px; }
 .fc-rar-rules p { margin: 6px 0; display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; }
 .fc-rar-rules p b { color: var(--ink); }
 
+/* ---------- character level + loot ---------- */
+.fc-char-head { display: flex; align-items: center; gap: 14px; }
+.fc-char-lv {
+  flex: none; width: 58px; height: 58px; border-radius: 16px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  font-size: 24px; font-weight: 700; line-height: 1; color: var(--ink);
+  background: var(--accent-soft); border: 1px solid var(--accent-border);
+}
+.fc-char-lv span { font-size: 11px; font-weight: 500; color: var(--muted); margin-bottom: 2px; }
+.fc-char-meta { flex: 1; min-width: 0; }
+.fc-char-title { font-weight: 600; }
+.fc-char-xp { margin: 6px 0 0; }
+.fc-char .fc-rar-bar { margin-top: 14px; }
+
+.fc-loot { border-color: var(--r-rare); box-shadow: 0 0 0 1px rgba(242, 212, 92, 0.25), var(--shadow); }
+.fc-loot.leveled { border-color: var(--r-unique); box-shadow: 0 0 24px rgba(232, 137, 60, 0.35), var(--shadow); }
+.fc-loot-head { display: flex; align-items: center; gap: 10px; }
+.fc-loot-xp { margin-left: auto; font-weight: 700; color: var(--r-rare); }
+.fc-loot-close { padding: 4px 10px; }
+.fc-loot-lvup {
+  margin-top: 10px; padding: 8px 12px; border-radius: 10px;
+  background: rgba(232, 137, 60, 0.14); color: var(--r-unique); font-weight: 600;
+}
+.fc-loot-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; font-size: 13px; }
+.fc-loot-row > b { margin-right: 4px; }
+.fc-loot-word {
+  padding: 2px 8px; border-radius: 8px; border: 1px solid currentColor;
+  font-family: "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+}
+.t-normal { color: var(--r-normal); }
+.t-magic  { color: var(--r-magic); }
+.t-rare   { color: var(--r-rare); }
+.t-unique { color: var(--r-unique); }
+.fc-loot-lv { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; margin-top: 12px; font-size: 13px; }
+.fc-loot-lv .progress { margin: 0; }
+
 @media (max-width: 600px) {
   .fc-mode-row .btn-row { width: 100%; justify-content: flex-end; }
   .fc-chunk-row { flex-direction: column; align-items: stretch; }
