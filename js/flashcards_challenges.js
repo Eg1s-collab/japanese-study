@@ -59,14 +59,7 @@ window.FlashcardsChallenges = (function () {
     if (window.CloudSync) window.CloudSync.notifyChange();
   }
 
-  function thailandDate() {
-    if (window.FlashcardsStreak) return window.FlashcardsStreak.thailandDate();
-    try {
-      return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" });
-    } catch (e) {
-      return new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
-    }
-  }
+  function thailandDate() { return window.FlashcardsStreak.thailandDate(); }
   function monthKey() { return thailandDate().slice(0, 7); }
 
   // Per-month totals from the streak counts and the mastery day log.

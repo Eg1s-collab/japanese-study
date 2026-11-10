@@ -305,7 +305,7 @@ async function mergeWithCloud(reason) {
     // Flashcards mastery (rarity): per-word max sockets + union of study days
     const cloudFm = cloud && cloud.flashcardsMastery ? cloud.flashcardsMastery : null;
     const mergedFm = window.FlashcardsMastery
-      ? window.FlashcardsMastery.mergeForCloud(localFm, cloudFm)
+      ? window.FlashcardsMastery.mergeForCloud(localFm, cloudFm, mergedFc)
       : (cloudFm || localFm || { decks: {}, updatedAt: 0 });
 
     // Flashcards challenges: union of finished challenges + theme unlocks

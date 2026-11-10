@@ -923,5 +923,5 @@ window.DictationView = (function () {
     return root;
   }
 
-  return { renderDeckSession, renderDailySession, renderDailyReviewCard, deckStats, isReadEligible, isDrillable };
+  return { renderDeckSession, renderDailySession, renderDailyReviewCard, deckStats, isReadEligible, isDrillable, frontDisplay };
 })();

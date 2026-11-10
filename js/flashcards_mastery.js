@@ -19,17 +19,21 @@
  *
  * Shape:
  *   {
- *     decks: { [deckId]: { [wordId]: { r, m, w, d: [dayNum, ...] } } },
+ *     decks: { [deckId]: { [wordId]: { r, m, w, d: [dayNum, ...], t } | { g } } },
+ *     gone:  { [deckId]: xp },
  *     log:   { [dayNum]: { xp, rare, unique, r, m, w } },
  *     updatedAt: number
  *   }
  * r/m/w = จำนวนครั้งที่ผ่าน, d = วันที่ผ่าน (ไม่ซ้ำ เรียงจากเก่า) เก็บวันแรก
- * + MAX_DAYS-1 วันล่าสุด
+ * + MAX_DAYS-1 วันล่าสุด, t = ระดับสูงสุดที่เคยได้ (ระดับไม่ลดแม้แก้คำทีหลัง)
+ * { g } = คำที่ถูกลบ เหลือแค่ XP ที่สะสมไว้; gone = XP ของชุดคำที่ถูกลบ
+ * (ลบคำ/ชุดคำแล้ว XP และเลเวลไม่หาย)
  * log = XP ที่ได้, จำนวนคำที่ขึ้น Rare/Unique และจำนวนครั้งที่ผ่านแต่ละ socket
  * ในแต่ละวัน (เก็บ LOG_KEEP วัน) ใช้คาดการณ์ว่าจะถึงเลเวล/ทั้งชุดเป็น Rare
  * เมื่อไหร่ และนับความคืบหน้า Challenge รายเดือน
  *
- * Cross-device merge: รายคำ — r/m/w เอาค่าสูงสุด, d รวมกันแล้วตัดตาม MAX_DAYS;
+ * Cross-device merge: รายคำ — r/m/w/t เอาค่าสูงสุด, d รวมกันแล้วตัดตาม MAX_DAYS;
+ * คำ/ชุดคำที่ถูกลบ (ตาม flashcards ที่ merge แล้ว) ถูกย่อเหลือ XP;
  * log รายวันเอาค่าสูงสุดของแต่ละช่อง (แบบเดียวกับ streak)
  */
 window.FlashcardsMastery = (function () {
@@ -51,7 +55,7 @@ window.FlashcardsMastery = (function () {
     { key: "unique", label: "Unique" }
   ];
 
-  function emptyState() { return { decks: {}, log: {}, updatedAt: 0 }; }
+  function emptyState() { return { decks: {}, gone: {}, log: {}, updatedAt: 0 }; }
 
   // Parsed-state cache keyed on the raw string, so the home screen can
   // summarize many decks without re-parsing the whole store each time.
@@ -68,6 +72,7 @@ window.FlashcardsMastery = (function () {
       if (!state || typeof state !== "object") state = emptyState();
       if (!state.decks || typeof state.decks !== "object") state.decks = {};
       if (!state.log || typeof state.log !== "object") state.log = {};
+      if (!state.gone || typeof state.gone !== "object") state.gone = {};
       state.updatedAt = state.updatedAt || 0;
     } catch (e) { state = emptyState(); }
     cacheRaw = raw;
@@ -84,14 +89,7 @@ window.FlashcardsMastery = (function () {
   }
 
   /* ---------- days ---------- */
-  function thailandDate() {
-    if (window.FlashcardsStreak) return window.FlashcardsStreak.thailandDate();
-    try {
-      return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" });
-    } catch (e) {
-      return new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
-    }
-  }
+  function thailandDate() { return window.FlashcardsStreak.thailandDate(); }
   function dayNum(dateStr) { return Math.floor(Date.parse(dateStr + "T00:00:00Z") / 86400000); }
   // Cached for a minute: Intl date formatting is slow and callers like the
   // Daily pool builder ask once per word.
@@ -110,16 +108,21 @@ window.FlashcardsMastery = (function () {
   }
 
   /* ---------- records ---------- */
+  // A deleted word's leftover: { g: xp }.
+  function isGone(rec) { return !!rec && typeof rec.g === "number"; }
   function ensureRec(state, deckId, wordId) {
     const deck = state.decks[deckId] || (state.decks[deckId] = {});
-    const rec = deck[wordId] || (deck[wordId] = { r: 0, m: 0, w: 0, d: [] });
+    if (!deck[wordId] || isGone(deck[wordId])) deck[wordId] = { r: 0, m: 0, w: 0, d: [] };
+    const rec = deck[wordId];
     if (!Array.isArray(rec.d)) rec.d = [];
     return rec;
   }
-  function getRec(deckId, wordId) {
-    const deck = load().decks[deckId];
-    return (deck && deck[wordId]) || null;
+  // Live (not deleted) record or null.
+  function liveRec(recs, wordId) {
+    const rec = recs && recs[wordId];
+    return rec && !isGone(rec) ? rec : null;
   }
+  function getRec(deckId, wordId) { return liveRec(load().decks[deckId], wordId); }
 
   // `front` (the word's front text) is optional; callers that have the word
   // pass it so the log needn't look the word up in FlashcardsStorage.
@@ -138,8 +141,7 @@ window.FlashcardsMastery = (function () {
   function touch(deckId, wordId, front) {
     if (!deckId || !wordId) return;
     const state = load();
-    const deck = state.decks[deckId];
-    if (deck && deck[wordId]) return;
+    if (liveRec(state.decks[deckId], wordId)) return;
     const rec = ensureRec(state, deckId, wordId);
     logChange(state, deckId, wordId, null, rec, front);
     save(state);
@@ -148,8 +150,7 @@ window.FlashcardsMastery = (function () {
   // review the word today even if they took the swipe back.
   function unpass(deckId, wordId, socket, front) {
     const state = load();
-    const deck = state.decks[deckId];
-    const rec = deck && deck[wordId];
+    const rec = liveRec(state.decks[deckId], wordId);
     if (!rec || !(rec[socket] > 0)) return;
     const before = cloneRec(state, deckId, wordId);
     rec[socket] -= 1;
@@ -157,17 +158,43 @@ window.FlashcardsMastery = (function () {
     save(state);
   }
   function cloneRec(state, deckId, wordId) {
-    const deck = state.decks[deckId];
-    const rec = deck && deck[wordId];
-    return rec ? { r: rec.r, m: rec.m, w: rec.w, d: rec.d.slice() } : null;
+    const rec = liveRec(state.decks[deckId], wordId);
+    return rec ? { r: rec.r, m: rec.m, w: rec.w, d: rec.d.slice(), t: rec.t } : null;
+  }
+
+  // Deleting a word keeps its XP as a { g } leftover so the level doesn't drop.
+  function dropWord(deckId, wordId, front) {
+    const state = load();
+    const rec = liveRec(state.decks[deckId], wordId);
+    if (!rec) return;
+    state.decks[deckId][wordId] = { g: recXp(rec, needsWriteFor(front)) };
+    save(state);
+  }
+  // Deleting a deck banks all of its XP in `gone` and drops its records.
+  function dropDeck(deck) {
+    if (!deck) return;
+    const state = load();
+    const recs = state.decks[deck.id];
+    if (!recs) return;
+    const fronts = new Map((deck.words || []).map((w) => [w.id, w.front]));
+    const xp = Object.keys(recs).reduce((sum, id) =>
+      sum + recXp(recs[id], needsWriteFor(fronts.has(id) ? fronts.get(id) : "")), 0);
+    state.gone[deck.id] = Math.max(state.gone[deck.id] || 0, xp);
+    delete state.decks[deck.id];
+    save(state);
   }
 
   /* ---------- rarity ---------- */
   function hasSockets(rec, needsWrite) {
     return rec.r > 0 && rec.m > 0 && (!needsWrite || rec.w > 0);
   }
+  // Never below `t`, the highest tier already reached: editing a word (e.g.
+  // adding a reading so it now needs ฟังเขียน) doesn't take a tier away.
   function rarityOf(rec, needsWrite) {
-    if (!rec) return 0;
+    if (!rec || isGone(rec)) return 0;
+    return Math.max(rec.t || 0, computedTier(rec, needsWrite));
+  }
+  function computedTier(rec, needsWrite) {
     const n = rec.d.length;
     if (hasSockets(rec, needsWrite) && n >= RARE_DAYS) {
       const span = rec.d[n - 1] - rec.d[0];
@@ -191,6 +218,8 @@ window.FlashcardsMastery = (function () {
   // raises zero counts; past study days are unknown so `d` is left alone.
   function backfill(state, deck) {
     const p = deck.progress || {};
+    // Progress lists can still hold ids of deleted words; skip those.
+    const live = new Set(deck.words.map((w) => w.id));
     const sets = [
       ["r", (p.cards && p.cards.seenIds) || []],
       ["m", (p.learn && p.learn.completedIds) || []],
@@ -199,13 +228,15 @@ window.FlashcardsMastery = (function () {
     let changed = false;
     sets.forEach(([socket, ids]) => {
       ids.forEach((id) => {
+        if (!live.has(id)) return;
         const rec = ensureRec(state, deck.id, id);
         if (!(rec[socket] > 0)) { rec[socket] = 1; changed = true; }
       });
     });
     ((p.cards && p.cards.stillUnknownIds) || []).forEach((id) => {
-      const deckRecs = state.decks[deck.id] || {};
-      if (!deckRecs[id]) { ensureRec(state, deck.id, id); changed = true; }
+      if (!live.has(id) || liveRec(state.decks[deck.id], id)) return;
+      ensureRec(state, deck.id, id);
+      changed = true;
     });
     return changed;
   }
@@ -221,23 +252,33 @@ window.FlashcardsMastery = (function () {
    *     uniqueToday            — reviewing today makes them Unique
    *     uniqueAt               — earliest later Date a Rare word can become Unique (or null)
    *   }
+   *   rareMinDays: fewest calendar days before every word could be Rare
+   *                (day-gating only), used by deckRareForecast
    */
   function deckSummary(deck) {
     const counts = [0, 0, 0, 0, 0];
     const next = { needRead: 0, needMeaning: 0, needWrite: 0, rareToday: 0, rareLater: 0, uniqueToday: 0, uniqueAt: null };
-    if (!deck || !Array.isArray(deck.words)) return { counts, total: 0, next };
+    if (!deck || !Array.isArray(deck.words)) return { counts, total: 0, next, rareMinDays: 0 };
     const state = load();
-    if (backfill(state, deck)) save(state);
+    let changed = backfill(state, deck);
     const recs = state.decks[deck.id] || {};
-    const DV = window.DictationView;
     const t = today();
     let uniqueMin = null;
+    let rareMinDays = 0;
     deck.words.forEach((w) => {
-      const rec = recs[w.id] || null;
-      const needsWrite = DV && DV.isDrillable ? DV.isDrillable(w.front) : true;
+      const rec = liveRec(recs, w.id);
+      const needsWrite = needsWriteFor(w.front);
       const tier = rarityOf(rec, needsWrite);
       counts[tier]++;
+      if (tier < 3) {
+        // Each missing study day takes one calendar day; today counts if unused.
+        const have = rec ? rec.d.length : 0;
+        const studiedToday = rec ? rec.d.includes(t) : false;
+        rareMinDays = Math.max(rareMinDays, RARE_DAYS - have - (studiedToday ? 0 : 1));
+      }
       if (!rec) return;
+      // Records from before `t` existed: remember the tier they reached.
+      if (tier > (rec.t || 0)) { rec.t = tier; changed = true; }
       if (tier === 1) {
         if (rec.r > 0 && !(rec.m > 0)) next.needMeaning++;
         else if (rec.m > 0 && !(rec.r > 0)) next.needRead++;
@@ -255,14 +296,15 @@ window.FlashcardsMastery = (function () {
         else if (uniqueMin === null || at < uniqueMin) uniqueMin = at;
       }
     });
+    if (changed) save(state);
     if (uniqueMin !== null) next.uniqueAt = dayToDate(uniqueMin);
-    return { counts, total: deck.words.length, next };
+    return { counts, total: deck.words.length, next, rareMinDays };
   }
 
   /* ---------- XP & character level ----------
-   * XP is derived from the records (never stored), so it merges across
-   * devices for free: each socket pass is worth SOCKET_XP and reaching a
-   * tier adds that tier's bonus once.
+   * XP is derived from the records, so it merges across devices for free:
+   * each socket pass is worth SOCKET_XP and reaching a tier adds that
+   * tier's bonus once. Deleted words/decks keep their XP (`g` / `gone`).
    */
   const SOCKET_XP = { r: 1, m: 2, w: 3 };
   const TIER_BONUS = [0, 1, 5, 20, 50];
@@ -270,6 +312,7 @@ window.FlashcardsMastery = (function () {
 
   function recXp(rec, needsWrite) {
     if (!rec) return 0;
+    if (isGone(rec)) return rec.g;
     let xp = (rec.r || 0) * SOCKET_XP.r + (rec.m || 0) * SOCKET_XP.m + (rec.w || 0) * SOCKET_XP.w;
     const tier = rarityOf(rec, needsWrite);
     for (let i = 1; i <= tier; i++) xp += TIER_BONUS[i];
@@ -294,17 +337,25 @@ window.FlashcardsMastery = (function () {
   function liveDecks() {
     return window.FlashcardsStorage ? window.FlashcardsStorage.load().decks : [];
   }
+  // XP kept from deleted decks and deleted words.
+  function bankedXp(state) {
+    let xp = Object.values(state.gone).reduce((a, b) => a + (b || 0), 0);
+    Object.values(state.decks).forEach((recs) => {
+      Object.values(recs).forEach((rec) => { if (isGone(rec)) xp += rec.g; });
+    });
+    return xp;
+  }
   // Whole-collection stats: XP/level plus tier counts over every live deck.
   // `state` lets a caller pass the in-flight (not yet saved) store.
   function profile(state) {
     state = state || load();
     const counts = [0, 0, 0, 0, 0];
-    let xp = 0;
+    let xp = bankedXp(state);
     let words = 0;
     liveDecks().forEach((deck) => {
       const recs = state.decks[deck.id] || {};
       (deck.words || []).forEach((w) => {
-        const rec = recs[w.id] || null;
+        const rec = liveRec(recs, w.id);
         const nw = needsWriteFor(w.front);
         counts[rarityOf(rec, nw)]++;
         xp += recXp(rec, nw);
@@ -336,6 +387,7 @@ window.FlashcardsMastery = (function () {
     const nw = needsWriteFor(front);
     const tierBefore = rarityOf(before, nw);
     const tierAfter = rarityOf(after, nw);
+    if (after) after.t = tierAfter;
     const delta = recXp(after, nw) - recXp(before, nw);
 
     const t = today();
@@ -436,24 +488,14 @@ window.FlashcardsMastery = (function () {
    * When every word in `deck` could be Rare at the collection's recent
    * Rare-per-day pace — never sooner than the day-gating allows.
    *   { ready, daysLeft } | { ready, remaining, rarePerDay, days, date }
+   * `sum` = deckSummary(deck) when the caller already has it.
    */
-  function deckRareForecast(deck) {
+  function deckRareForecast(deck, sum) {
     const p = pace();
     if (!p.ready) return p;
-    const recs = load().decks[deck.id] || {};
-    const t = today();
-    let remaining = 0;
-    let minDays = 0;
-    deck.words.forEach((w) => {
-      const rec = recs[w.id] || null;
-      if (rarityOf(rec, needsWriteFor(w.front)) >= 3) return;
-      remaining++;
-      // Each missing study day takes one calendar day; today counts if unused.
-      const have = rec ? rec.d.length : 0;
-      const studiedToday = rec ? rec.d.includes(t) : false;
-      const need = Math.max(0, RARE_DAYS - have - (studiedToday ? 0 : 1));
-      if (need > minDays) minDays = need;
-    });
+    sum = sum || deckSummary(deck);
+    const remaining = sum.counts[0] + sum.counts[1] + sum.counts[2];
+    const minDays = sum.rareMinDays;
     if (!remaining) return { ready: true, remaining: 0, rarePerDay: p.rarePerDay, days: 0, date: addDays(0) };
     if (!(p.rarePerDay > 0)) return { ready: true, remaining, rarePerDay: 0, days: null, date: null };
     const days = Math.max(minDays, Math.ceil(remaining / p.rarePerDay));
@@ -466,13 +508,13 @@ window.FlashcardsMastery = (function () {
   // `recs` = deckRecords(deckId), when checking many words of one deck.
   function upgradeOnPass(deckId, word, recs) {
     recs = recs || load().decks[deckId];
-    const rec = recs && recs[word.id];
+    const rec = liveRec(recs, word.id);
     if (!rec) return 0;
     const t = today();
     if (rec.d.includes(t) && rec.r > 0) return 0;
     const nw = needsWriteFor(word.front);
     const now = rarityOf(rec, nw);
-    const next = rarityOf({ r: rec.r + 1, m: rec.m, w: rec.w, d: capDays([...rec.d, t]) }, nw);
+    const next = computedTier({ r: rec.r + 1, m: rec.m, w: rec.w, d: capDays([...rec.d, t]) }, nw);
     return next > now ? next : 0;
   }
 
@@ -482,24 +524,58 @@ window.FlashcardsMastery = (function () {
     if (!state || typeof state !== "object") return;
     localStorage.setItem(KEY, JSON.stringify(state));
   }
-  function mergeForCloud(localState, cloudState) {
+  /**
+   * `flashcards` = the already merged FlashcardsStorage state (optional).
+   * With it, records of deleted decks (tombstoned) collapse into `gone`
+   * and records of words no longer in their deck collapse to { g }, so
+   * deletions on one device don't come back from another. Without it
+   * (no deck data), nothing is pruned.
+   */
+  function mergeForCloud(localState, cloudState, flashcards) {
     const a = (localState && localState.decks) || {};
     const b = (cloudState && cloudState.decks) || {};
     const merged = emptyState();
+    const ga = (localState && localState.gone) || {};
+    const gb = (cloudState && cloudState.gone) || {};
+    new Set([...Object.keys(ga), ...Object.keys(gb)]).forEach((k) => {
+      merged.gone[k] = Math.max(ga[k] || 0, gb[k] || 0);
+    });
+    const deleted = (flashcards && flashcards.deletedDecks) || {};
+    const liveWords = new Map(((flashcards && flashcards.decks) || []).map((d) =>
+      [d.id, new Set((d.words || []).map((w) => w.id))]));
     new Set([...Object.keys(a), ...Object.keys(b)]).forEach((deckId) => {
       const da = a[deckId] || {};
       const db = b[deckId] || {};
-      const out = merged.decks[deckId] = {};
+      const out = {};
       new Set([...Object.keys(da), ...Object.keys(db)]).forEach((wordId) => {
         const x = da[wordId] || {};
         const y = db[wordId] || {};
+        if (isGone(x) || isGone(y)) {
+          // Max of every XP figure seen for it, so a merge never counts twice.
+          out[wordId] = { g: Math.max(isGone(x) ? x.g : recXp(liveRec(da, wordId), true),
+                                      isGone(y) ? y.g : recXp(liveRec(db, wordId), true)) };
+          return;
+        }
         out[wordId] = {
           r: Math.max(x.r || 0, y.r || 0),
           m: Math.max(x.m || 0, y.m || 0),
           w: Math.max(x.w || 0, y.w || 0),
-          d: capDays([...(x.d || []), ...(y.d || [])])
+          d: capDays([...(x.d || []), ...(y.d || [])]),
+          t: Math.max(x.t || 0, y.t || 0)
         };
       });
+      if (deleted[deckId] || merged.gone[deckId] !== undefined) {
+        const xp = Object.values(out).reduce((sum, rec) => sum + recXp(rec, true), 0);
+        merged.gone[deckId] = Math.max(merged.gone[deckId] || 0, xp);
+        return;
+      }
+      const words = liveWords.get(deckId);
+      if (words) {
+        Object.keys(out).forEach((wordId) => {
+          if (!words.has(wordId) && !isGone(out[wordId])) out[wordId] = { g: recXp(out[wordId], true) };
+        });
+      }
+      merged.decks[deckId] = out;
     });
     const la = (localState && localState.log) || {};
     const lb = (cloudState && cloudState.log) || {};
@@ -517,7 +593,7 @@ window.FlashcardsMastery = (function () {
 
   return {
     TIERS,
-    pass, touch, unpass,
+    pass, touch, unpass, dropWord, dropDeck,
     getRec, rarityOf, deckSummary,
     profile, levelInfo, peekLoot, dismissLoot,
     levelForecast, deckRareForecast, upgradeOnPass,

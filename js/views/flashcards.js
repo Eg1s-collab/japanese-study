@@ -122,7 +122,7 @@ window.FlashcardsView = (function () {
     if (n.needRead) hints.push(`📇 ผ่าน Flash Card อีก <b>${n.needRead}</b> คำ → Magic`);
     if (n.uniqueAt) hints.push(`🟧 คำ Rare ถัดไปเป็น Unique ได้เร็วสุด <b>${thaiShortDate(n.uniqueAt)}</b> (ถ้าทวนทุกวัน)`);
     if (!hints.length && c[0] === sum.total && sum.total) hints.push("เริ่ม Flash Card เพื่อเก็บคำแรก");
-    const rf = window.FlashcardsMastery.deckRareForecast(deck);
+    const rf = window.FlashcardsMastery.deckRareForecast(deck, sum);
     if (!rf.ready) hints.push(forecastWaitText(rf));
     else if (rf.remaining && rf.days === null) hints.push("📈 ยังไม่มีคำขึ้น Rare ใน 14 วันล่าสุด — ทวนคำ Magic ให้ครบ 3 วันเพื่อเริ่มนับอัตรา");
     else if (rf.remaining) hints.push(`📈 ทั้งชุดเป็น Rare ใน ${etaText(rf.days, rf.date)} ที่อัตราตอนนี้ ~${rf.rarePerDay.toFixed(1)} คำ/วัน`);
@@ -147,10 +147,6 @@ window.FlashcardsView = (function () {
   }
 
   function fmtNum(n) { return Number(n).toLocaleString("en-US"); }
-  // Kanji/word without the "(reading)" suffix.
-  function plainFront(front) {
-    return String(front || "").replace(/[(（][^()（）]*[)）]/g, "").trim();
-  }
 
   // "✦ ผ่านวันนี้ → Rare" chip for a word one Flash Card pass from a new tier.
   function nearBadge(deckId, word) {
@@ -249,7 +245,7 @@ window.FlashcardsView = (function () {
     if (!loot && !hasAwards) return null;
     const leveled = !!loot && loot.after.level > loot.before.level;
     const names = (list, cls) => list.slice(0, 8).map((f) =>
-      `<span class="fc-loot-word ${cls}">${escapeHtml(plainFront(f))}</span>`).join("") +
+      `<span class="fc-loot-word ${cls}">${escapeHtml(window.DictationView.frontDisplay(f))}</span>`).join("") +
       (list.length > 8 ? `<span class="subtle">+${list.length - 8}</span>` : "");
     const rows = [];
     pendingAwards.unlocked.forEach((r) => rows.push(
@@ -337,6 +333,7 @@ window.FlashcardsView = (function () {
   /* ===================== top-level render ===================== */
   function render() {
     const root = document.createElement("div");
+    root.className = "fc-view";
     if (state.screen === "home" || state.screen === "deck") {
       const loot = renderLootCard();
       if (loot) root.appendChild(loot);
@@ -351,9 +348,11 @@ window.FlashcardsView = (function () {
     else if (state.screen === "dictation") root.appendChild(renderDictation());
     return root;
   }
+  // Screens pass their own root; replace the whole view (which also holds
+  // the loot card) so nothing from the previous screen is left behind.
   function refresh(container) {
     const fresh = render();
-    container.replaceWith(fresh);
+    (container.closest(".fc-view") || container).replaceWith(fresh);
     return fresh;
   }
 
