@@ -88,6 +88,59 @@ window.FlashcardsView = (function () {
     return `ชุด ${labels} (รวม ${wordCount} คำ จาก ${total} ชุด)`;
   }
 
+  /* ---------- mastery (rarity) ---------- */
+  // Stacked bar, highest tier on the left so the "earned" part reads first.
+  function rarityBar(sum, extraClass) {
+    const TIERS = window.FlashcardsMastery.TIERS;
+    const segs = [4, 3, 2, 1, 0].map((t) => {
+      const n = sum.counts[t];
+      if (!n) return "";
+      return `<span class="fc-rar-seg r-${TIERS[t].key}" style="flex:${n} 0 0" title="${TIERS[t].label}: ${n}"></span>`;
+    }).join("");
+    return `<div class="fc-rar-bar ${extraClass || ""}">${segs}</div>`;
+  }
+  function thaiShortDate(d) {
+    try {
+      return d.toLocaleDateString("th-TH", { day: "numeric", month: "short", timeZone: "UTC" });
+    } catch (e) { return d.toISOString().slice(0, 10); }
+  }
+  function renderMasteryCard(deck) {
+    if (!window.FlashcardsMastery) return "";
+    const sum = window.FlashcardsMastery.deckSummary(deck);
+    const TIERS = window.FlashcardsMastery.TIERS;
+    const c = sum.counts;
+    const n = sum.next;
+    const legend = [4, 3, 2, 1, 0].map((t) =>
+      `<span class="fc-rar-chip"><i class="fc-rar-dot r-${TIERS[t].key}"></i>${TIERS[t].label} <b>${c[t]}</b></span>`
+    ).join("");
+    const hints = [];
+    if (n.rareToday) hints.push(`🟨 ทวนวันนี้ <b>${n.rareToday}</b> คำจะขึ้น Rare`);
+    if (n.rareLater) hints.push(`🟨 ทวนพรุ่งนี้อีก <b>${n.rareLater}</b> คำจะขึ้น Rare`);
+    if (n.needWrite) hints.push(`🎧 ฟังเขียนให้ถูกอีก <b>${n.needWrite}</b> คำ เพื่อเติม socket ให้ครบ`);
+    if (n.needMeaning) hints.push(`🎯 ทำ Learn ให้ถูกอีก <b>${n.needMeaning}</b> คำ → Magic`);
+    if (n.needRead) hints.push(`📇 ผ่าน Flash Card อีก <b>${n.needRead}</b> คำ → Magic`);
+    if (n.uniqueAt) hints.push(`🟧 คำ Rare ถัดไปเป็น Unique ได้เร็วสุด <b>${thaiShortDate(n.uniqueAt)}</b> (ถ้าทวนทุกวัน)`);
+    if (!hints.length && c[0] === sum.total && sum.total) hints.push("เริ่ม Flash Card เพื่อเก็บคำแรก");
+    return `
+      <div class="card fc-mastery">
+        <div class="fc-mastery-head">
+          <h3 style="margin:0;">✦ ความชำนาญ</h3>
+          <span class="qprog">Rare ขึ้นไป ${c[3] + c[4]} / ${sum.total}</span>
+        </div>
+        ${rarityBar(sum)}
+        <div class="fc-rar-legend">${legend}</div>
+        ${hints.length ? `<ul class="fc-rar-hints">${hints.map((h) => `<li>${h}</li>`).join("")}</ul>` : ""}
+        <details class="fc-rar-rules">
+          <summary>ระดับคิดยังไง?</summary>
+          <p><i class="fc-rar-dot r-normal"></i><b>Normal</b> เคยเจอคำนี้แล้ว</p>
+          <p><i class="fc-rar-dot r-magic"></i><b>Magic</b> ผ่าน 📇 Flash Card และ 🎯 Learn</p>
+          <p><i class="fc-rar-dot r-rare"></i><b>Rare</b> ผ่านครบทุกโหมด (รวม 🎧 ฟังเขียน ถ้าคำนั้นมีคำอ่าน) และทวนผ่านมาแล้ว 3 วัน คนละวัน</p>
+          <p><i class="fc-rar-dot r-unique"></i><b>Unique</b> ทวนผ่าน 5 วัน และวันแรกถึงวันล่าสุดห่างกันอย่างน้อย 30 วัน</p>
+          <p class="subtle">ระดับนี้สะสมตลอด ไม่หายตอนกดรีเซ็ตรอบ</p>
+        </details>
+      </div>`;
+  }
+
   /* ===================== top-level render ===================== */
   function render() {
     const root = document.createElement("div");
@@ -807,6 +860,7 @@ window.FlashcardsView = (function () {
         const learnDone = (d.progress && d.progress.learn) ? d.progress.learn.completedIds.length : 0;
         const pctC = d.words.length ? Math.round((cardsDone / d.words.length) * 100) : 0;
         const pctL = d.words.length ? Math.round((learnDone / d.words.length) * 100) : 0;
+        const mastery = window.FlashcardsMastery ? window.FlashcardsMastery.deckSummary(d) : null;
         const card = document.createElement("div");
         card.className = "card unit-card";
         card.innerHTML = `
@@ -817,6 +871,8 @@ window.FlashcardsView = (function () {
               <div class="progress"><div class="bar" style="width:${pctC}%"></div></div></div>
             <div class="fc-mini-row"><span>🎯 ${learnDone}/${d.words.length}</span>
               <div class="progress"><div class="bar" style="width:${pctL}%"></div></div></div>
+            ${mastery ? `<div class="fc-mini-row" title="Rare ขึ้นไป"><span>✦ ${mastery.counts[3] + mastery.counts[4]}/${d.words.length}</span>
+              ${rarityBar(mastery, "sm")}</div>` : ""}
           </div>
           <div class="btn-row">
             <button class="btn primary" data-open>เปิด</button>
@@ -967,6 +1023,8 @@ window.FlashcardsView = (function () {
           <button class="btn ghost" id="backHome">← กลับ</button>
         </div>
         <p class="subtle">${total} คำ · ⭐ ${starred}</p>
+
+        ${renderMasteryCard(deck)}
 
         <div class="card">
           <h3 style="margin-top:0;">แบ่งชุดย่อย</h3>

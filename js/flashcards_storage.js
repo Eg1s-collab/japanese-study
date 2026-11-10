@@ -369,6 +369,9 @@ window.FlashcardsStorage = (function () {
     const d = state.decks.find((x) => x.id === deckId);
     if (!d) return;
     ensureDeckShape(d);
+    // Every pass counts toward mastery, even a word already in this round's
+    // seenIds (e.g. reviewed again in Daily Words on a later day).
+    if (window.FlashcardsMastery) window.FlashcardsMastery.pass(deckId, wordId, "r");
     let changed = false;
     if (!d.progress.cards.seenIds.includes(wordId)) {
       d.progress.cards.seenIds.push(wordId);
@@ -389,6 +392,7 @@ window.FlashcardsStorage = (function () {
     const d = state.decks.find((x) => x.id === deckId);
     if (!d) return;
     ensureDeckShape(d);
+    if (window.FlashcardsMastery) window.FlashcardsMastery.touch(deckId, wordId);
     if (!d.progress.cards.stillUnknownIds.includes(wordId)) {
       d.progress.cards.stillUnknownIds.push(wordId);
       commitDeck(state, d);
@@ -399,6 +403,7 @@ window.FlashcardsStorage = (function () {
     const d = state.decks.find((x) => x.id === deckId);
     if (!d) return;
     ensureDeckShape(d);
+    if (window.FlashcardsMastery) window.FlashcardsMastery.unpass(deckId, wordId, "r");
     const before = d.progress.cards.seenIds.length;
     d.progress.cards.seenIds = d.progress.cards.seenIds.filter((id) => id !== wordId);
     if (d.progress.cards.seenIds.length !== before) commitDeck(state, d);
@@ -412,6 +417,7 @@ window.FlashcardsStorage = (function () {
     let newlyCompleted = 0;
     if (isCorrect) {
       d.progress.learn.correct++;
+      if (window.FlashcardsMastery) window.FlashcardsMastery.pass(deckId, wordId, "m");
       const markCompleted = !opts || opts.markCompleted !== false;
       if (markCompleted && !d.progress.learn.completedIds.includes(wordId)) {
         d.progress.learn.completedIds.push(wordId);
