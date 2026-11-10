@@ -115,12 +115,17 @@ window.FlashcardsView = (function () {
     ).join("");
     const hints = [];
     if (n.rareToday) hints.push(`🟨 ทวนวันนี้ <b>${n.rareToday}</b> คำจะขึ้น Rare`);
+    if (n.uniqueToday) hints.push(`🟧 ทวนวันนี้ <b>${n.uniqueToday}</b> คำจะขึ้น Unique`);
     if (n.rareLater) hints.push(`🟨 ทวนพรุ่งนี้อีก <b>${n.rareLater}</b> คำจะขึ้น Rare`);
     if (n.needWrite) hints.push(`🎧 ฟังเขียนให้ถูกอีก <b>${n.needWrite}</b> คำ เพื่อเติม socket ให้ครบ`);
     if (n.needMeaning) hints.push(`🎯 ทำ Learn ให้ถูกอีก <b>${n.needMeaning}</b> คำ → Magic`);
     if (n.needRead) hints.push(`📇 ผ่าน Flash Card อีก <b>${n.needRead}</b> คำ → Magic`);
     if (n.uniqueAt) hints.push(`🟧 คำ Rare ถัดไปเป็น Unique ได้เร็วสุด <b>${thaiShortDate(n.uniqueAt)}</b> (ถ้าทวนทุกวัน)`);
     if (!hints.length && c[0] === sum.total && sum.total) hints.push("เริ่ม Flash Card เพื่อเก็บคำแรก");
+    const rf = window.FlashcardsMastery.deckRareForecast(deck);
+    if (!rf.ready) hints.push(forecastWaitText(rf));
+    else if (rf.remaining && rf.days === null) hints.push("📈 ยังไม่มีคำขึ้น Rare ใน 14 วันล่าสุด — ทวนคำ Magic ให้ครบ 3 วันเพื่อเริ่มนับอัตรา");
+    else if (rf.remaining) hints.push(`📈 ทั้งชุดเป็น Rare ใน ${etaText(rf.days, rf.date)} ที่อัตราตอนนี้ ~${rf.rarePerDay.toFixed(1)} คำ/วัน`);
     return `
       <div class="card fc-mastery">
         <div class="fc-mastery-head">
@@ -147,6 +152,39 @@ window.FlashcardsView = (function () {
     return String(front || "").replace(/[(（][^()（）]*[)）]/g, "").trim();
   }
 
+  // "✦ ผ่านวันนี้ → Rare" chip for a word one Flash Card pass from a new tier.
+  function nearBadge(deckId, word) {
+    const M = window.FlashcardsMastery;
+    const up = M && word ? M.upgradeOnPass(deckId, word) : 0;
+    if (up < 2) return "";
+    const tier = M.TIERS[up];
+    return `<div class="fc-near-badge t-${tier.key}">✦ ผ่านวันนี้ → ${tier.label}</div>`;
+  }
+  // How many of today's not-yet-reviewed Daily Words would level up.
+  function dailyNearLine(FD) {
+    const M = window.FlashcardsMastery;
+    if (!M) return "";
+    const words = new Map();
+    (FS().load().decks || []).forEach((d) => d.words.forEach((w) => words.set(d.id + "::" + w.id, w)));
+    const byTier = [0, 0, 0, 0, 0];
+    FD.getItems().forEach((it) => {
+      if (it.state !== "pending") return;
+      const w = words.get(it.deckId + "::" + it.wordId);
+      if (w) byTier[M.upgradeOnPass(it.deckId, w)]++;
+    });
+    const parts = [4, 3, 2].filter((t) => byTier[t]).map((t) =>
+      `<span class="t-${M.TIERS[t].key}">${M.TIERS[t].label} ${byTier[t]}</span>`);
+    if (!parts.length) return "";
+    return `<div class="fc-near-line">✦ ทวนผ่านวันนี้แล้วจะขึ้นระดับ: ${parts.join(" · ")}</div>`;
+  }
+  function etaText(days, date) {
+    if (days === 0) return "วันนี้";
+    return `~${days} วัน (ราว ${thaiShortDate(date)})`;
+  }
+  function forecastWaitText(f) {
+    return `📈 เรียนต่ออีก ${f.daysLeft} วัน แล้วจะคาดการณ์ได้ว่าจะถึงเป้าเมื่อไหร่`;
+  }
+
   // Character level card on the flashcards home (whole collection).
   function renderCharacterPanel() {
     if (!window.FlashcardsMastery || !window.FlashcardsStorage) return null;
@@ -164,11 +202,28 @@ window.FlashcardsView = (function () {
           <div class="progress fc-char-xp"><div class="bar" style="width:${p.pct}%"></div></div>
         </div>
       </div>
+      ${characterForecast()}
       ${rarityBar(p)}
       <div class="fc-rar-legend">${[4, 3, 2, 1].map((t) =>
         `<span class="fc-rar-chip"><i class="fc-rar-dot r-${TIERS[t].key}"></i>${TIERS[t].label} <b>${fmtNum(p.counts[t])}</b></span>`
       ).join("")}<span class="fc-rar-chip">จาก ${fmtNum(p.words)} คำ</span></div>`;
     return wrap;
+  }
+
+  function characterForecast() {
+    const f = window.FlashcardsMastery.levelForecast();
+    if (!f.ready) return `<div class="fc-forecast subtle">${forecastWaitText(f)}</div>`;
+    const lines = [];
+    const rate = Math.round(f.xpPerDay);
+    if (f.nextLevel) {
+      lines.push(f.nextLevel.days === null
+        ? `Lv ${f.nextLevel.level}: ยังไม่ได้ XP ใน 14 วันล่าสุด`
+        : `Lv ${f.nextLevel.level} ใน ${etaText(f.nextLevel.days, f.nextLevel.date)}`);
+    }
+    if (f.milestone && f.milestone.days !== null) {
+      lines.push(`Lv ${f.milestone.level} ใน ${etaText(f.milestone.days, f.milestone.date)}`);
+    }
+    return `<div class="fc-forecast">📈 ~${fmtNum(rate)} XP/วัน · ${lines.join(" · ")}</div>`;
   }
 
   // POE-style drop summary shown when the user returns from a session; it
@@ -428,6 +483,7 @@ window.FlashcardsView = (function () {
               <div class="progress ${c.allDone && learnTotal > 0 ? "ok" : ""}"><div class="bar" style="width:${learnPct}%"></div></div>
             </div>
           </div>
+          ${dailyNearLine(FD)}
           ${c.allDone ? `<div class="daily-done">✓ คำประจำวันครบแล้ว เก่งมาก!</div>` : ""}
           <div class="btn-row daily-actions">
             <button class="btn primary" id="dailyStartCards" ${c.cardsRemaining === 0 ? "disabled" : ""}>${cardsLabel}</button>
@@ -2778,6 +2834,7 @@ window.FlashcardsView = (function () {
             <div class="fc-flashcard-face fc-face-front">
               <div class="fc-flashcard-text">${escapeHtml(shownText)}</div>
               <div class="fc-flashcard-hint">${flipped ? "ด้านหลัง" : "ด้านหน้า"} — แตะเพื่อพลิก · จาก ${escapeHtml(deckName(it))}</div>
+              ${nearBadge(it.deckId, w)}
             </div>
           </div>
           <div class="fc-swipe-hint fc-swipe-hint-left">✕ ยังไม่ได้</div>
